@@ -1,0 +1,10 @@
+build
+dats
+out
+__pycache__
+
+*.pcap
+*.tgz
+*.csv
+*.log
+*.dat
