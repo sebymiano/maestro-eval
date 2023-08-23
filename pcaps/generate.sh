@@ -55,8 +55,21 @@ gen_uniform_internet_trace() {
     $UNIFORM_SCRIPT --output $pcap --pcap $IMC10_TRACE --flows $num_flows --max $num_flows
 }
 
+gen_uniform_vpp_trace() {
+    pkt_size=64
+    num_flows=40000
+
+    pcap=$SCRIPT_DIR/uniform_${pkt_size}B_vpp.pcap
+
+    if [ -f $pcap ]; then
+        return 0
+    fi
+    
+    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --internet-only
+}
+
 get_zipf_trace() {
-    pkt_size=$1
+    pkt_size=64
     pcap=$SCRIPT_DIR/zipf.pcap
     max=50000
 
@@ -107,5 +120,6 @@ get_churn_traces() {
 get_univ_trace
 gen_uniform_traces
 gen_uniform_internet_trace
-get_zipf_trace 64
+gen_uniform_vpp_trace
+get_zipf_trace
 get_churn_traces

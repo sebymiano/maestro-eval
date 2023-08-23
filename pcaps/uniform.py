@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import argparse
 import time
@@ -92,7 +92,6 @@ if __name__ == "__main__":
 			print("Error: if --pcap is not used, then --size is required.")
 			exit(1)
 
-		assert args.pcap != None
 		assert args.size >= 64 and args.size <= 1514
 
 		num_flows = args.flows
