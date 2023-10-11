@@ -28,6 +28,6 @@ set linetype 2 linecolor rgb "#CC6677"
 set linetype 3 linecolor rgb "#88CCEE"
 
 plot \
-	"./dats/skew-fw-uniform.dat" using 2:3:xtic(1) w histogram t "Uniform", \
-	"./dats/skew-fw-zipf.dat" using 2:3:xtic(1) w histogram t "Zipf", \
-	"./dats/skew-fw-zipf-balanced.dat" using 2:3:xtic(1) w histogram t "Zipf (balanced)"
+	"./dats/skew-fw-uniform.dat" using 2:3:4:xtic(1) w histogram t "Uniform", \
+	"./dats/skew-fw-zipf.dat" using 2:3:4:xtic(1) w histogram t "Zipf", \
+	"./dats/skew-fw-zipf-balanced.dat" using 2:3:4:xtic(1) w histogram t "Zipf (balanced)"

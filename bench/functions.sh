@@ -117,7 +117,7 @@ dut_check_file() {
 	file=$1
 
 	if ! dut_run "stat $file >/dev/null 2>&1"; then
-		echo "ERROR: $pcap not found in DUT. Exiting."
+		echo "ERROR: $file not found in DUT. Exiting."
 		exit 1
 	fi
 }
@@ -126,7 +126,7 @@ tg_check_file() {
 	file=$1
 
 	if ! dut_run "stat $file >/dev/null 2>&1"; then
-		echo "ERROR: $pcap not found in TG. Exiting."
+		echo "ERROR: $file not found in TG. Exiting."
 		exit 1
 	fi
 }
@@ -220,7 +220,7 @@ replay_pcap_latency() {
 	local pcap=$1
 	local local_results_file=$2
 
-	local rate=0.1 # Gbps
+	local rate=1 # Gbps
 
 	if ! tg_run "stat $pcap >/dev/null 2>&1" "$TG_PCAPS_DIR"; then
 		echo "ERROR: $TG_PCAPS_DIR/$pcap not found in TG. Exiting."

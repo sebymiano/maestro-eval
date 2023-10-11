@@ -295,27 +295,31 @@ def skew(nfs):
 			core = d[0]
 
 			if len(d[1][0]) > 1:
-				Gbps_value = mean(d[1][0])
-				Gbps_std = stdev(d[1][0])
+				Gbps_median = median(d[1][0])
+				Gbps_min    = min(d[1][0])
+				Gbps_max    = max(d[1][0])
 
-				Mpps_value = mean(d[1][2])
-				Mpps_std = stdev(d[1][2])
+				Mpps_median = median(d[1][2])
+				Mpps_min    = min(d[1][2])
+				Mpps_max    = max(d[1][2])
 			else:
-				Gbps_value = d[1][0][0]
-				Gbps_std = 0
+				Gbps_median = d[1][0][0]
+				Gbps_min    = Gbps_median
+				Gbps_max    = Gbps_median
 
-				Mpps_value = d[1][2][0]
-				Mpps_std = 0
+				Mpps_median = d[1][2][0]
+				Mpps_min    = Mpps_median
+				Mpps_max    = Mpps_median
 
-			final_data[key]['data'].append((core, Gbps_value, Gbps_std, Mpps_value, Mpps_std))
+			final_data[key]['data'].append((core, Gbps_median, Gbps_min, Gbps_max, Mpps_median, Mpps_min, Mpps_max))
 
 	for nf in final_data:
 		outfile = final_data[nf]['out']
 		dat = final_data[nf]['data']
 
 		with open(outfile, 'w') as o:
-			for cores, Gbps_value, Gbps_std, Mpps_value, Mpps_std in dat:
-				o.write("{} {} {}\n".format(cores, Mpps_value, Mpps_std))
+			for cores, Gbps_median, Gbps_min, Gbps_max, Mpps_median, Mpps_min, Mpps_max in dat:
+				o.write("{} {} {} {}\n".format(cores, Mpps_median, Mpps_min, Mpps_max))
 
 def technologies(nfs):
 	data = {}
@@ -371,7 +375,7 @@ def technologies(nfs):
 			base_perf_mpps = base[0][1]
 
 			for i, d in enumerate(nf_data):
-				speedup = d[1] / base_perf_mpps
+				speedup = d[1] / base_perf_mpps if base_perf_mpps > 0 else 1
 				nf_data[i] = d + (speedup,)
 
 		data[nf['name']] = nf_data
