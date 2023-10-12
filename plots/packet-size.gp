@@ -5,7 +5,6 @@ set key horiz
 set key reverse outside top center Left enhanced spacing 1
 
 set xlabel "Packet size (bytes)"
-# set xlabel "Packet size (bytes)" offset 0,-0.6
 
 set xtics border in scale 0,0 nomirror autojustify
 set xtics norangelimit 
@@ -20,17 +19,12 @@ set y2tics nomirror textcolor rgb "#CC6677"
 set y2range [ 0 : * ] noreverse writeback
 set link y
 
-# set label "Internet\ntraffic" at 2.3,93 center font "Helvetica-Bold,22"
-# set arrow from 2.4,75 to 2.7,60 filled size screen 0.015,20,100
-
 set style data histogram
 
 set style histogram clustered title textcolor lt -1
 set style histogram errorbars gap 1 lw 1
-# set boxwidth 5
 
 set style fill solid border 0
-# set style fill pattern 1
 
 set boxwidth 1
 

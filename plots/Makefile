@@ -1,4 +1,4 @@
-TARGETS += churn packet-size skew technologies-zipf technologies time-to-generate vpp latency-sn
+TARGETS += churn packet-size skew technologies-zipf technologies vpp latency-sn
 OUT_DIR=out
 
 define plot

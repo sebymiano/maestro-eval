@@ -3,191 +3,128 @@
 import math
 import os
 import re
+import glob
 
 from pathlib import Path
-from datetime import datetime, timedelta
-from statistics import mean, stdev, median, quantiles
+from statistics import mean, stdev, median
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 BENCH_DIR = Path(SCRIPT_DIR).parent / Path("bench")
 DAT_DIR = Path(SCRIPT_DIR) / Path("dats")
 
-def time_to_generate(nfs):
-	_nfs = nfs['nfs']
-	_out_table = nfs['out_table']
-	_out_dat_boxplot = nfs['out_dat_boxplot']
-	_out_dat_histogram = nfs['out_dat_histogram']
-	
-	data = {}
-	table_data = {}
-	data_boxplot = {}
+def packet_sizes(nfs):
+	data = []
 
-	all_nfs_names = [ nf['name'] for nf in _nfs ]
+	for nf in nfs:
+		size = re.search(r".*/(.+).csv", nf['infile']).groups()[0]
 
-	for nf in _nfs:
-		name = nf['name']
-		_in = nf['in']
+		if size == 'internet':
+			size = '\"Internet\"'
+		
+		with open(nf['infile']) as f:
+			lines = f.readlines()[1:]
 
-		with open(_in) as f:
-			lines = f.readlines()
-			parsed_data = []
+			gbps_values = []
+			mpps_values = []
 
 			for line in lines:
-				if 'time' in line: continue
+				_, _, gbps, mpps, _ = line.split(',')
+				gbps_values.append(float(gbps))
+				mpps_values.append(float(mpps))
 
-				line = line.rstrip()
-				if not line: continue
+			if len(gbps_values) == 1:
+				gbps_mean  = gbps_values[0]
+				mpps_mean  = mpps_values[0]
 
-				line = re.split(' +|,+', line)
+				gbps_stdev = 0
+				mpps_stdev = 0
+			else:
+				gbps_mean  = mean(gbps_values)
+				mpps_mean  = mean(mpps_values)
 
-				t = datetime.strptime(line[1],"%H:%M:%S.%f")
-				delta = timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
+				gbps_stdev = stdev(gbps_values)
+				mpps_stdev = stdev(mpps_values)
 
-				parsed_data.append(int(delta.total_seconds()))
+			data.append((size, gbps_mean, gbps_stdev, mpps_mean, mpps_stdev))
 
-		m = mean(parsed_data)
-		std_dev = stdev(parsed_data)
-		_min = min(parsed_data)
-		_max = max(parsed_data)
-		q = quantiles(parsed_data)
-
-		# lets assume the times are always < 1h
-		def get_fmt(t):
-			fmt = str(timedelta(seconds=t)).split(".")[0]
-			hours = fmt.split(':')[0]
-			assert(int(hours) == 0)
-			return ':'.join(fmt.split(':')[1:])
-
-		table_data[name] = [ get_fmt(t) for t in [m, std_dev] + q ]
-		data_boxplot[name] = [ _min ] + q + [ _max ]
-		data[name] = [ m, std_dev ]
+	data.sort(key=lambda tup: tup[1])
 	
-	table = ''
+	outfile = nf['dat']
+	with open(outfile, 'w') as o:
+		for size, gbps_mean, gbps_stdev, mpps_mean, mpps_stdev in data:
+			o.write(f"{size} {gbps_mean} {gbps_stdev} {mpps_mean} {mpps_stdev}\n")
 
-	table += '\\begin{table}[t]\n'
-	table += '\t\\centering\n'
-	table += '\t\\resizebox{\\linewidth}{!}{%\n'
-	table += '\t\t\\begin{tabular}{l|c|c|c|c|c|}\n'
-	table += '\t\t\t\\hline\n'
-	table += '\t\t\t\\multicolumn{1}{|l|}{\\textbf{NF}} & \\textbf{Mean} & \\textbf{Std dev} & $\\pmb{P_{25}}$ & $\\pmb{P_{50}}$ & $\\pmb{P_{75}}$ \\\\ \n'
-	table += '\t\t\t\\hline\n'
-	table += '\t\t\t\\hline\n'
-
-	pre_entry = '\t\t\t\\multicolumn{1}{|l|}'
-	post_entry = ' \\\\ \\hline'
-	str_if_locks = ' \\textsuperscript{*}'
-
-	for nf in all_nfs_names:
-		table += f"{pre_entry}{{{nf}{ str_if_locks if nf in [ 'DBridge', 'LB'] else '' }}} & {' & '.join(table_data[nf])}{post_entry}\n"
-
-	table += '\t\t\t\\multicolumn{6}{l}{\\textsuperscript{*}\\footnotesize{Lock-based implementation.}}\n'
-	table += '\t\t\\end{tabular}%\n'
-	table += '\t}\n'
-	table += '\t\\vspace{-1em}\n'
-	table += '\t\\caption{Mean time (mm:ss) to generate each parallel implementation for each NF, with the corresponding standard deviations and quartiles. These values were calculated using 10 generation time samples for each NF.}\n'
-	table += '\t\\label{tab:microbenchmarks}\n'
-	table += '\t\\vspace{1em}\n'
-	table += '\\end{table}\n'
-
-	with open(_out_table, 'w') as o:
-		o.write(table)
-	
-	with open(_out_dat_boxplot, 'w') as o:
-		zipped = list(zip(*[ [ nf ] + times for nf,times in data_boxplot.items() ]))
-		o.write(f'# {" ".join(zipped[0])}\n')
-		for row in zipped[1:]:
-			integers = [ str(i) for i in row ]
-			o.write(f'{" ".join(integers)}\n')
-		
-	with open(_out_dat_histogram, 'w') as o:
-		for i, (nf, times) in enumerate(data.items()):
-			numbers = [ str(t) for t in times ]
-			row = ' '.join(numbers)
-			o.write(f'{nf} {row} {i}\n')
-	
 def churn(nfs):
+	data = {}
+
 	for nf in nfs:
-		data = {}
+		target, fpm = re.search(r"churn-(.+)-(\d+)-fpm.csv", nf['infile']).groups()
+		fpm = int(fpm)
+
+		if target not in data:
+			data[target] = {}
 
 		with open(nf['infile']) as f:
-			lines = f.readlines()
+			lines = f.readlines()[1:]
 			parsed_data = []
 
 			for line in lines:
-				if '#' in line: continue
-
 				line = line.rstrip()
 				line = re.split(' +|,+', line)
 
 				line_data = [ int(d) if '.' not in d else float(d) for d in line ]
-				if len(line_data) == 4:
-					line_data = line_data[0:2] + [0] + line_data[2:]
 				parsed_data.append(line_data)
 
 			data_per_cores = {}
 
-			for d in parsed_data:
-				fpm   = d[0]
-				cores = d[1]
-				i     = d[2]
-				Gbps  = d[3]
-				Mpps  = d[4]
-
+			for _, cores, Gbps, Mpps, _ in parsed_data:
 				if cores not in data_per_cores:
-					data_per_cores[cores] = {}
+					data_per_cores[cores] = []
 
-				if fpm not in data_per_cores[cores]:
-					data_per_cores[cores][fpm] = []
-
-				data_per_cores[cores][fpm].append((Gbps, Mpps))
+				data_per_cores[cores].append((Gbps, Mpps))
 
 			for cores in data_per_cores.keys():
-				data[cores] = []
+				if cores not in data[target]:
+					data[target][cores] = []
 
-				for fpm, values in data_per_cores[cores].items():
-					Gbps = [ x[0] for x in values ]
-					Mpps = [ x[1] for x in values ]
+				Gbps = [ x[0] for x in data_per_cores[cores] ]
+				Mpps = [ x[1] for x in data_per_cores[cores] ]
 
-					if len(Gbps) > 1:
-						Gbps_mean = mean(Gbps)
-						Gbps_std_dev = stdev(Gbps)
+				if len(Gbps) > 1:
+					Gbps_mean = mean(Gbps)
+					Gbps_std_dev = stdev(Gbps)
 
-						Mpps_mean = mean(Mpps)
-						Mpps_std_dev = stdev(Mpps)
-					else:
-						Gbps_mean = Gbps[0]
-						Gbps_std_dev = 0
+					Mpps_mean = mean(Mpps)
+					Mpps_std_dev = stdev(Mpps)
+				else:
+					Gbps_mean = Gbps[0]
+					Gbps_std_dev = 0
 
-						Mpps_mean = Mpps[0]
-						Mpps_std_dev = 0
-					
-					base_Gbps    = 60
-					real_fpm     = int(Gbps_mean * fpm / base_Gbps)
-					real_fpm_err = int(Gbps_std_dev * fpm / base_Gbps)
+					Mpps_mean = Mpps[0]
+					Mpps_std_dev = 0
+				
+				base_Gbps    = 60
+				real_fpm     = int(Gbps_mean * fpm / base_Gbps)
+				real_fpm_err = int(Gbps_std_dev * fpm / base_Gbps)
 
-					if Gbps_mean < 1:
-						continue
+				if Gbps_mean < 1:
+					continue
 
-					if nf['name'] == 'churn-locks-fw':
-						if cores == 1:
-							print(f'{fpm:10,} {real_fpm:10,} {Mpps_mean}')
-					
-					if nf['name'] == 'churn-locks-fw':
-						if (cores == 6 and fpm == 1500000) or (cores == 1 and fpm == 2600000):
-							continue
+				data[target][cores].append((Gbps_mean, Gbps_std_dev, Mpps_mean, Mpps_std_dev, real_fpm, real_fpm_err))
+				data[target][cores] = sorted(data[target][cores], key=lambda x: x[4])
 
+	for target in data.keys():
+		for cores in data[target].keys():
+			outfile = f'{DAT_DIR}/churn-{target}-cores-{cores}.dat'
 
-					data[cores].append((Gbps_mean, Gbps_std_dev, Mpps_mean, Mpps_std_dev, real_fpm, real_fpm_err))
-
-		for cores, dat in data.items():
-			outfile = f"{nf['dat'].split('.')[0]}_cores_{cores}.{nf['dat'].split('.')[1]}"
-			assert(len(outfile))
-
-			with open(outfile, 'w') as o:
-				for d in dat:
-					o.write("{} {} {} {} {} {}\n".format(d[0], d[1], d[2], d[3], d[4] if d[4] != 0 else 500, d[5]))
-
-
+			with open(outfile, 'w') as f:
+				for Gbps_mean, Gbps_std_dev, Mpps_mean, Mpps_std_dev, real_fpm, real_fpm_err in data[target][cores]:
+					if real_fpm == 0:
+						# Plotting detail
+						real_fpm = 500
+						
+					f.write(f'{Gbps_mean} {Gbps_std_dev} {Mpps_mean} {Mpps_std_dev} {real_fpm} {real_fpm_err}\n')
+			
 def skew(nfs):
 	data = {}
 	for nf in nfs:
@@ -500,6 +437,16 @@ def latency_cdf(nfs):
 
 lut = [
 	{
+		'processor': churn,
+		'nfs': [
+			{
+				'name': f'churn-{target}-{fpm}-fpm',
+				'infile': f'{BENCH_DIR}/churn/churn-{target}-{fpm}-fpm.csv',
+				'dat': None, # Decided by the processor, as there's no 1-to-1 correspondence between infiles and data files
+			} for target, fpm in [ re.search(r"churn-(.+)-(\d+)-fpm.csv", file).groups() for file in glob.glob(f'{BENCH_DIR}/churn/*.csv') ]
+		]
+	},
+	{
 		'processor': technologies,
 		'nfs': [
 			{
@@ -568,6 +515,16 @@ lut = [
 			},
 		]
 	},
+	{
+		'processor': packet_sizes,
+		'nfs': [
+			{
+				'name': f'packet-sizes-{size}',
+				'infile': f'{BENCH_DIR}/packet-sizes/{size}.csv',
+				'dat': f'{DAT_DIR}/packet-size.dat',
+			} for size in [ '64B', '128B', '256B', '1024B', '1500B', 'internet' ]
+		],
+	}
 ]
 
 def main():
@@ -575,7 +532,9 @@ def main():
 		os.mkdir(DAT_DIR)
 
 	for entry in lut:
-		entry['processor'](entry['nfs'])
+		# Filter out the ones which do not have data yet
+		nfs = list(filter(lambda nf: os.path.exists(nf['infile']) , entry['nfs']))
+		entry['processor'](nfs)
 
 if __name__ == '__main__':
 	main()

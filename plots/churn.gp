@@ -5,7 +5,6 @@ set tmargin 0
 set bmargin 1
 
 set multiplot layout 3,1 margins 0.12,0.95,.15,.95 spacing 0,0
-# set multiplot layout 3,1 margins 0.12,0.95,.15,.95 spacing 0,0.05
 
 set logscale x
 set format x '{%g}M'
@@ -14,7 +13,6 @@ set xrange [ 0.0005 : 100 ] noreverse writeback
 set ylabel "Mpps"
 set ytics 20
 set yrange [ 0 : 99 ] noreverse writeback
-# set yrange [ 0 : 100 ] noreverse writeback
 
 set grid ytics lt 0 lw 1 lc rgb "#404040"
 set grid xtics mxtics lt 0 lw 1 lc rgb "#404040"
@@ -58,45 +56,45 @@ set xtics (	\
 set xtics nomirror
 
 set y2label "SN" font ',45'
-plot "./dats/churn-sn-fw_cores_1.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 1 t "1 core", \
+plot "./dats/churn-sn-cores-1.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 1 t "1 core", \
 	'' using ($5/1000000):3 with lines lt 1 notitle, \
-	"./dats/churn-sn-fw_cores_2.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 2 t "2 cores", \
+	"./dats/churn-sn-cores-2.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 2 t "2 cores", \
 	'' using ($5/1000000):3 with lines lt 2 notitle, \
-	"./dats/churn-sn-fw_cores_4.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 3 t "4 cores", \
+	"./dats/churn-sn-cores-4.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 3 t "4 cores", \
 	'' using ($5/1000000):3 with lines lt 3 notitle, \
-	"./dats/churn-sn-fw_cores_6.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 4 t "6 cores", \
+	"./dats/churn-sn-cores-6.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 4 t "6 cores", \
 	'' using ($5/1000000):3 with lines lt 4 notitle, \
-	"./dats/churn-sn-fw_cores_8.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 5 t "8 cores", \
+	"./dats/churn-sn-cores-8.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 5 t "8 cores", \
 	'' using ($5/1000000):3 with lines lt 5 notitle, \
-	"./dats/churn-sn-fw_cores_10.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 6 t "10 cores", \
+	"./dats/churn-sn-cores-10.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 6 t "10 cores", \
 	'' using ($5/1000000):3 with lines lt 6 notitle, \
-	"./dats/churn-sn-fw_cores_12.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 7 t "12 cores", \
+	"./dats/churn-sn-cores-12.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 7 t "12 cores", \
 	'' using ($5/1000000):3 with lines lt 7 notitle, \
-	"./dats/churn-sn-fw_cores_14.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 8 t "14 cores", \
+	"./dats/churn-sn-cores-14.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 8 t "14 cores", \
 	'' using ($5/1000000):3 with lines lt 8 notitle, \
-	"./dats/churn-sn-fw_cores_16.dat" using ($5/1000000):3:($6/1000000):2 w xyerrorbars lt 9 t "16 cores", \
+	"./dats/churn-sn-cores-16.dat" using ($5/1000000):3:($6/1000000):2 w xyerrorbars lt 9 t "16 cores", \
 	'' using ($5/1000000):3 with lines lt 9 notitle
 
 set ylabel "Mpps"
 
 set y2label "Locks" font ',45'
-plot "./dats/churn-locks-fw_cores_1.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 1 t "1 core", \
+plot "./dats/churn-locks-cores-1.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 1 t "1 core", \
 	'' using ($5/1000000):3 with lines lt 1 notitle, \
-	"./dats/churn-locks-fw_cores_2.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 2 t "2 cores", \
+	"./dats/churn-locks-cores-2.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 2 t "2 cores", \
 	'' using ($5/1000000):3 with lines lt 2 notitle, \
-	"./dats/churn-locks-fw_cores_4.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 3 t "4 cores", \
+	"./dats/churn-locks-cores-4.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 3 t "4 cores", \
 	'' using ($5/1000000):3 with lines lt 3 notitle, \
-	"./dats/churn-locks-fw_cores_6.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 4 t "6 cores", \
+	"./dats/churn-locks-cores-6.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 4 t "6 cores", \
 	'' using ($5/1000000):3 with lines lt 4 notitle, \
-	"./dats/churn-locks-fw_cores_8.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 5 t "8 cores", \
+	"./dats/churn-locks-cores-8.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 5 t "8 cores", \
 	'' using ($5/1000000):3 with lines lt 5 notitle, \
-	"./dats/churn-locks-fw_cores_10.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 6 t "10 cores", \
+	"./dats/churn-locks-cores-10.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 6 t "10 cores", \
 	'' using ($5/1000000):3 with lines lt 6 notitle, \
-	"./dats/churn-locks-fw_cores_12.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 7 t "12 cores", \
+	"./dats/churn-locks-cores-12.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 7 t "12 cores", \
 	'' using ($5/1000000):3 with lines lt 7 notitle, \
-	"./dats/churn-locks-fw_cores_14.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 8 t "14 cores", \
+	"./dats/churn-locks-cores-14.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 8 t "14 cores", \
 	'' using ($5/1000000):3 with lines lt 8 notitle, \
-	"./dats/churn-locks-fw_cores_16.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 9 t "16 cores", \
+	"./dats/churn-locks-cores-16.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 9 t "16 cores", \
 	'' using ($5/1000000):3 with lines lt 9 notitle
 
 unset x2tics
@@ -119,21 +117,21 @@ set key at 90, 80
 set key box vertical width 2 height 1 spacing 1 font ",30"
 
 set y2label "TM" font ',45'
-plot "./dats/churn-tm-fw_cores_1.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 1 t "1 core", \
+plot "./dats/churn-tm-cores-1.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 1 t "1 core", \
 	'' using ($5/1000000):3 with lines lt 1 notitle, \
-	"./dats/churn-tm-fw_cores_2.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 2 t "2 cores", \
+	"./dats/churn-tm-cores-2.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 2 t "2 cores", \
 	'' using ($5/1000000):3 with lines lt 2 notitle, \
-	"./dats/churn-tm-fw_cores_4.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 3 t "4 cores", \
+	"./dats/churn-tm-cores-4.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 3 t "4 cores", \
 	'' using ($5/1000000):3 with lines lt 3 notitle, \
-	"./dats/churn-tm-fw_cores_6.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 4 t "6 cores", \
+	"./dats/churn-tm-cores-6.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 4 t "6 cores", \
 	'' using ($5/1000000):3 with lines lt 4 notitle, \
-	"./dats/churn-tm-fw_cores_8.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 5 t "8 cores", \
+	"./dats/churn-tm-cores-8.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 5 t "8 cores", \
 	'' using ($5/1000000):3 with lines lt 5 notitle, \
-	"./dats/churn-tm-fw_cores_10.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 6 t "10 cores", \
+	"./dats/churn-tm-cores-10.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 6 t "10 cores", \
 	'' using ($5/1000000):3 with lines lt 6 notitle, \
-	"./dats/churn-tm-fw_cores_12.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 7 t "12 cores", \
+	"./dats/churn-tm-cores-12.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 7 t "12 cores", \
 	'' using ($5/1000000):3 with lines lt 7 notitle, \
-	"./dats/churn-tm-fw_cores_14.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 8 t "14 cores", \
+	"./dats/churn-tm-cores-14.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 8 t "14 cores", \
 	'' using ($5/1000000):3 with lines lt 8 notitle, \
-	"./dats/churn-tm-fw_cores_16.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 9 t "16 cores", \
+	"./dats/churn-tm-cores-16.dat" using ($5/1000000):3:($6/1000000):4 w xyerrorbars lt 9 t "16 cores", \
 	'' using ($5/1000000):3 with lines lt 9 notitle

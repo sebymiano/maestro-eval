@@ -28,6 +28,7 @@ CURRENT_RUNNING_NF=""
 CURRENT_LOG=$BASE_LOG
 
 ADDITIONAL_REPLAY_PCAP_FLAGS=""
+EXPIRATION_TIME_US=""
 
 set_log() {
 	local exp_dir=$1
@@ -149,7 +150,11 @@ build_nf() {
 
 	if ! dut_run "stat $nf_exe > /dev/null 2>&1" "$DUT_SYNTHESIZED_DIR"; then
 		echo "[$exp_name] Building NF..."
-		gen_nf_cmd="$DUT_MAESTRO_SCRIPT $nf_path --target $target --out $nf_src"
+		if [ -z "$EXPIRATION_TIME_US" ]; then
+			gen_nf_cmd="$DUT_MAESTRO_SCRIPT $nf_path --target $target --out $nf_src"
+		else
+			gen_nf_cmd="$DUT_MAESTRO_SCRIPT $nf_path --target $target --out $nf_src --symbex --var --var EXPIRATION_TIME=$EXPIRATION_TIME_US"
+		fi
 
 		dut_run "$gen_nf_cmd" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
 		dut_run "SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1

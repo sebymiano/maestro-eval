@@ -7,13 +7,31 @@ CURRENT_EXPERIMENT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/nul
 FUNCTIONS_FILE="$CURRENT_EXPERIMENT_DIR/../functions.sh"
 source $FUNCTIONS_FILE
 
-TARGET="sn"
-NF="nop"
+NF="fw"
+EXPIRATION_TIME_US=1000
 
-bench_balanced_all_cores_nf "$NF-$TARGET" "$NF" "$TARGET" "uniform_64B.pcap" "$CURRENT_EXPERIMENT_DIR" "64B"
-bench_balanced_all_cores_nf "$NF-$TARGET" "$NF" "$TARGET" "uniform_128B.pcap" "$CURRENT_EXPERIMENT_DIR" "128B"
-bench_balanced_all_cores_nf "$NF-$TARGET" "$NF" "$TARGET" "uniform_256B.pcap" "$CURRENT_EXPERIMENT_DIR" "256B"
-bench_balanced_all_cores_nf "$NF-$TARGET" "$NF" "$TARGET" "uniform_512B.pcap" "$CURRENT_EXPERIMENT_DIR" "512B"
-bench_balanced_all_cores_nf "$NF-$TARGET" "$NF" "$TARGET" "uniform_1024B.pcap" "$CURRENT_EXPERIMENT_DIR" "1024B"
-bench_balanced_all_cores_nf "$NF-$TARGET" "$NF" "$TARGET" "uniform_1500B.pcap" "$CURRENT_EXPERIMENT_DIR" "1500B"
-bench_balanced_all_cores_nf "$NF-$TARGET" "$NF" "$TARGET" "uniform_internet.pcap" "$CURRENT_EXPERIMENT_DIR" "internet"
+declare -a pcaps=(
+    churn_15400fpm_64B_100Gbps_1000us.pcap
+    churn_23000fpm_64B_100Gbps_1000us.pcap
+    churn_31000fpm_64B_100Gbps_1000us.pcap
+    churn_250000fpm_64B_100Gbps_1000us.pcap
+    churn_885000fpm_64B_100Gbps_1000us.pcap
+    churn_1500000fpm_64B_100Gbps_1000us.pcap
+    churn_2000000fpm_64B_100Gbps_1000us.pcap
+    churn_2600000fpm_64B_100Gbps_1000us.pcap
+    churn_25000000fpm_64B_100Gbps_1000us.pcap
+    churn_88462000fpm_64B_100Gbps_1000us.pcap
+)
+
+run_churn() {
+    target=$1
+
+    for pcap in "${pcaps[@]}"; do
+        churn=$(echo "$pcap" | grep -oP "\\d+" | head -1)
+        bench_nf "$NF-$target-exp-time-$EXPIRATION_TIME_US-us" "$NF" "$target" "$pcap" "$CURRENT_EXPERIMENT_DIR" "churn-$target-$churn-fpm"
+    done
+}
+
+run_churn "sn"
+run_churn "locks"
+run_churn "tm"
