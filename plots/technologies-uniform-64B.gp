@@ -1,11 +1,10 @@
 set terminal pdf size 18, 24 enhanced color font 'Helvetica,45' linewidth 2
-set output 'out/technologies.pdf'
+set output 'out/technologies-uniform-64B.pdf'
 
 set tmargin 0
 set bmargin 1
 
 set multiplot layout 9,1 margins 0.1,0.95,.1,.97 spacing 0,0
-# set multiplot layout 9,1 margins 0.12,0.95,.06,.96 spacing 0,0.02
 
 set key horiz
 set key reverse outside top center Left enhanced spacing 1

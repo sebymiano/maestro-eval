@@ -1,11 +1,10 @@
 set terminal pdf size 18, 24 enhanced color font 'Helvetica,45' linewidth 2
-set output 'out/technologies-zipf.pdf'
+set output 'out/technologies-zipf-64B.pdf'
 
 set tmargin 0
 set bmargin 1
 
 set multiplot layout 9,1 margins 0.1,0.95,.1,.97 spacing 0,0
-# set multiplot layout 9,1 margins 0.12,0.95,.06,.96 spacing 0,0.02
 
 set key horiz
 set key reverse outside top center Left enhanced spacing 1
@@ -31,7 +30,6 @@ unset xtics
 unset x2tics
 
 set ytics 20
-# set yrange [ 0 : 100 ] noreverse writeback
 set yrange [ 0 : 99 ] noreverse writeback
 set samples 16
 
