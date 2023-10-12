@@ -124,7 +124,70 @@ def churn(nfs):
 						real_fpm = 500
 						
 					f.write(f'{Gbps_mean} {Gbps_std_dev} {Mpps_mean} {Mpps_std_dev} {real_fpm} {real_fpm_err}\n')
+
+def vpp(nfs):
+	data = {}
+	for nf in nfs:
+		nf_data = []
+
+		with open(nf['infile']) as f:
+			lines = f.readlines()[1:]
+			parsed_data = []
+
+			for line in lines:
+				line = line.rstrip()
+				line = re.split(' +|,+', line)
+
+				line_data = [ int(d) if '.' not in d else float(d) for d in line ]
+				parsed_data.append(line_data)
+
+			current_cores = -1
+			trimmed_data = []
+
+			for d in parsed_data:
+				i     = d[0]
+				cores = d[1]
+				Gbps  = d[2]
+				Mpps  = d[3]
+
+				if cores != current_cores:
+					trimmed_data.append([])
+					current_cores = cores
+
+				trimmed_data[-1].append(( cores, Gbps, Mpps ))
+
+			nf_data = []
+			for d in trimmed_data:
+				cores = d[0][0]
+
+				Gbps_mean = sum(x[1] for x in d) / len(d)
+				Mpps_mean = sum(x[2] for x in d) / len(d)
+
+				if len(d) > 1:
+					Gbps_std_dev = math.sqrt(sum((x[1] - Gbps_mean) ** 2 for x in d) / (len(d) - 1))
+					Mpps_std_dev = math.sqrt(sum((x[2] - Mpps_mean) ** 2 for x in d) / (len(d) - 1))
+				else:
+					Gbps_std_dev = 0
+					Mpps_std_dev = 0
+
+				nf_data.append((cores, Gbps_mean, Gbps_std_dev, Mpps_mean, Mpps_std_dev))
 			
+		data[nf['name']] = nf_data
+
+	for nf in data:
+		outfile = ''
+		for _nf in nfs:
+			if _nf['name'] == nf:
+				outfile = _nf['dat']
+				break
+		assert(len(outfile))
+
+		dat = data[nf]
+
+		with open(outfile, 'w') as o:
+			for cores, Gbps_mean, Gbps_std_dev, Mpps_mean, Mpps_std_dev in dat:
+				o.write(f"{cores} {Gbps_mean} {Gbps_std_dev} {Mpps_mean} {Mpps_std_dev}\n")
+
 def skew(nfs):
 	data = {}
 	for nf in nfs:
@@ -524,7 +587,27 @@ lut = [
 				'dat': f'{DAT_DIR}/packet-size.dat',
 			} for size in [ '64B', '128B', '256B', '1024B', '1500B', 'internet' ]
 		],
-	}
+	},
+	{
+		'processor': vpp,
+		'nfs': [
+			{
+				'name': f'vpp-maestro-locks',
+				'infile': f'{BENCH_DIR}/vpp/nat-maestro-locks.csv',
+				'dat': f'{DAT_DIR}/nat-maestro-locks.dat'
+			},
+			{
+				'name': f'vpp-maestro-sn',
+				'infile': f'{BENCH_DIR}/vpp/nat-maestro-sn.csv',
+				'dat': f'{DAT_DIR}/nat-maestro-sn.dat'
+			},
+			{
+				'name': f'vpp-maestro-vpp',
+				'infile': f'{BENCH_DIR}/vpp/nat-vpp.csv',
+				'dat': f'{DAT_DIR}/nat-vpp.dat'
+			},
+		]
+	},
 ]
 
 def main():

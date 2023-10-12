@@ -1,4 +1,4 @@
-TARGETS += churn packet-size skew technologies-zipf-64B technologies-uniform-64B latency-sn
+TARGETS += churn packet-size skew technologies-zipf-64B technologies-uniform-64B latency-sn vpp
 OUT_DIR=out
 
 define plot

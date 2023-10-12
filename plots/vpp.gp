@@ -13,9 +13,8 @@ set xtics ()
 set yrange [ 0 : 100 ] noreverse writeback
 
 set style data histogram
-
 set style histogram clustered gap 1 title textcolor lt -1
-
+set style histogram errorbars gap 1 lw 1
 set style fill solid border 0
 
 set boxwidth 1
@@ -31,6 +30,6 @@ set linetype 10 linecolor rgb "#DDDDDD"
 set ylabel "Mpps"
 set ytics 20
 
-plot "./dats/vpp-sn-nat.dat" using 4:xtic(1) w histogram fs t "Maestro (SN)", \
-	"./dats/vpp-locks-nat.dat" using 4:xtic(1) w histogram fs t "Maestro (Locks)", \
-	"./dats/vpp-nat-ei.dat" using 4:xtic(1) w histogram fs t "VPP"
+plot "./dats/nat-maestro-sn.dat" using 4:5:xtic(1) w histogram fs t "Maestro (SN)", \
+	"./dats/nat-maestro-locks.dat" using 4:5:xtic(1) w histogram fs t "Maestro (Locks)", \
+	"./dats/nat-vpp.dat" using 4:5:xtic(1) w histogram fs t "VPP"

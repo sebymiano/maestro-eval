@@ -10,6 +10,7 @@ DUT_MAESTRO_DIR=$DUT_EVAL_DIR/build/maestro
 DUT_NFS_DIR=$DUT_MAESTRO_DIR/dpdk-nfs
 DUT_SYNTHESIZED_DIR=$DUT_EVAL_DIR/build/synthesized
 DUT_PCAPS_DIR=$DUT_EVAL_DIR/pcaps
+DUT_VPP_DIR=$DUT_EVAL_DIR/build/maestro-eval-vpp
 
 TG_EVAL_BENCH_DIR=$TG_EVAL_DIR/bench
 TG_PKTGEN_DIR=$TG_EVAL_DIR/build/DPDK-Pktgen
@@ -18,6 +19,8 @@ TG_PCAPS_DIR=$TG_EVAL_DIR/pcaps
 DUT_MAESTRO_PATHS_FILE=$DUT_MAESTRO_DIR/paths.sh
 DUT_MAESTRO_SCRIPT=$DUT_MAESTRO_DIR/maestro/maestro.py
 DUT_DPDK_MAKEFILE=$DUT_MAESTRO_DIR/util/Makefile.dpdk
+DUT_VPP_RUN_SCRIPT=$DUT_VPP_DIR/maestro-eval-utils/scripts/container-run.sh
+DUT_VPP_STOP_SCRIPT=$DUT_VPP_DIR/maestro-eval-utils/scripts/container-stop.sh
 
 TG_REPLAY_PCAP_SCRIPT=$TG_EVAL_DIR/util/replay-pcap.py
 TG_ACTIVATE_PYTHON_ENV_SCRIPT=$TG_EVAL_DIR/build/env/bin/activate
@@ -419,6 +422,55 @@ run_balanced_bench() {
 	__finalize_bench "$tmp_results_file" "$results_file"
 }
 
+run_vpp_bench() {
+	local pcap=$1
+	local exp_dir=$2
+	local exp_name=$3
+
+	local intermediate_results_file="$exp_dir/.single.csv"
+	local tmp_results_file="$exp_dir/.results.csv"
+	local results_file="$exp_dir/$exp_name.csv"
+
+	log ""
+	log "============================================================"
+	log ""
+	
+	touch $tmp_results_file
+	echo -e "i,#cores,Gbps,Mpps,loss" > $tmp_results_file
+
+	local MIN_CORES=1
+	local MAX_CORES=$(python3 -c "print(len('$DUT_CORES'.split(',')))")
+
+	for ((n_cores=$MIN_CORES;n_cores<=$MAX_CORES;n_cores++)); do
+		local lcores=$(python3 -c "print(','.join('$DUT_CORES'.split(',')[:$n_cores]))")
+
+		echo "[$exp_name] Running NF with $n_cores cores ($lcores)"
+		dut_run "$DUT_VPP_RUN_SCRIPT $lcores" "$DUT_VPP_DIR"
+		sleep 5
+		
+		for ((i=1;i<=$ITERATIONS;i++)); do
+			echo "[$exp_name]   * Running benchmark {$i/$ITERATIONS, pcap=$pcap}"
+			log "NF: VPP, cores: $lcores, pcap: $pcap, it: $i/$ITERATIONS"
+
+			replay_pcap "$pcap" "$intermediate_results_file"
+
+			local mpps=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $1}')
+			local gbps=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $2}')
+			local loss=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $5}')
+
+			echo "[$exp_name]         results: $gbps Gbps $mpps Mpps $loss% loss"
+			echo -e "$i,$n_cores,$gbps,$mpps,$loss" >> $tmp_results_file
+
+			rm -f $intermediate_results_file
+		done
+
+		echo "[$exp_name]   * Killing NF"
+		dut_run "$DUT_VPP_STOP_SCRIPT" "$DUT_VPP_DIR"
+	done
+
+	__finalize_bench "$tmp_results_file" "$results_file"
+}
+
 bench_nf() {
 	local nf_exe=$1
 	local nf=$2
@@ -468,6 +520,18 @@ bench_balanced_lb() {
 	run_balanced_bench "$nf_exe" "$pcap" "$exp_dir" "$exp_name"
 
 	ADDITIONAL_REPLAY_PCAP_FLAGS=""
+}
+
+bench_balanced_vpp() {
+	local pcap=$1
+	local exp_dir=$2
+	local exp_name=$3
+
+	dut_check_file "$DUT_PCAPS_DIR/$pcap"
+	tg_check_file "$TG_PCAPS_DIR/$pcap"
+
+	set_log "$exp_dir"
+	run_vpp_bench "$pcap" "$exp_dir" "$exp_name"
 }
 
 bench_balanced_all_cores_nf() {
