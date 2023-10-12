@@ -10,3 +10,4 @@ source $INSTALLERS_SCRIPT
 setup
 install_maestro
 install_dpdk_kmods
+install_vpp

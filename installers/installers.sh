@@ -19,6 +19,8 @@ PKTGEN_DIR="$BUILD_DIR/Pktgen-DPDK"
 
 PYTHON_REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 
+VPP_DIR="$BUILD_DIR/maestro-eval-vpp"
+
 export DEBIAN_FRONTEND=noninteractive
 
 setup() {
@@ -74,7 +76,6 @@ install_maestro() {
 			./build.sh
 		popd
 	popd
-
 }
 
 install_dpdk() {
@@ -97,7 +98,6 @@ install_dpdk() {
 			sudo ldconfig
 		popd
 	popd
-
 }
 
 install_dpdk_kmods() {
@@ -111,7 +111,6 @@ install_dpdk_kmods() {
 	pushd $DPDK_KMODS_DIR/linux/igb_uio
 		make
 	popd
-
 }
 
 install_pktgen() {
@@ -149,4 +148,22 @@ install_pktgen() {
 			./tools/pktgen-build.sh build
 		popd
 	popd	
+}
+
+install_vpp() {
+	if [ -d $VPP_DIR ]; then
+		echo "VPP directory already exists: $VPP_DIR."
+		return 0
+	fi
+
+	pushd $BUILD_DIR
+		git clone https://github.com/snaplab-dpss/maestro-eval-vpp.git \
+			--branch maestro-eval \
+			$VPP_DIR
+
+		pushd $VPP_DIR
+			git submodule update --init --recursive
+			DOCKER_BUILDKIT=1 docker-compose build
+		popd
+	popd
 }
