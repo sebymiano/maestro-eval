@@ -30,19 +30,18 @@ unset xtics
 unset x2tics
 
 set ytics 20
-# set yrange [ 0 : 100 ] noreverse writeback
 set yrange [ 0 : 99 ] noreverse writeback
 set samples 16
 
 set ylabel " "
 set y2label "NOP" font ',55'
-plot "<(sed -n '1,16p' ./dats/nop-sn.dat)" using 2:3:4:xtic(1) w histogram t "Shared-nothing", \
+plot "./dats/nop-sn.dat" using 2:3:4:xtic(1) w histogram t "Shared-nothing", \
 	 "./dats/nop-locks.dat" using 2:3:4:xtic(1) w histogram t "Lock-based", \
 	 "./dats/nop-tm.dat" using 2:3:4:xtic(1) w histogram t "TM"
 
 set ylabel " "
 set y2label "SBridge" font ',55'
-plot "<(sed -n '1,16p' ./dats/sbridge-sn.dat)" using 2:3:4:xtic(1) w histogram fs notitle, \
+plot "./dats/sbridge-sn.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/sbridge-locks.dat" using 2:3:4:xtic(1) w histogram fs  notitle, \
 	 "./dats/sbridge-tm.dat" using 2:3:4:xtic(1) w histogram fs notitle
 
@@ -53,31 +52,31 @@ plot "./dats/bridge-locks.dat" using 2:3:4:xtic(1) lt 2 w histogram fs  notitle,
 
 set ylabel " "
 set y2label "Policer" font ',55'
-plot "<(sed -n '1,16p' ./dats/pol-sn.dat)" using 2:3:4:xtic(1) w histogram fs notitle, \
+plot "./dats/pol-sn.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/pol-locks.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/pol-tm.dat" using 2:3:4:xtic(1) w histogram fs notitle
 
 set ylabel "Throughput (Mpps)"
 set y2label "FW" font ',55'
-plot "<(sed -n '1,16p' ./dats/fw-sn.dat)" using 2:3:4:xtic(1) w histogram fs notitle, \
+plot "./dats/fw-sn.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/fw-locks.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/fw-tm.dat" using 2:3:4:xtic(1) w histogram fs notitle
 
 set ylabel " "
 set y2label "NAT" font ',55'
-plot "<(sed -n '1,16p' ./dats/nat-sn.dat)" using 2:3:4:xtic(1) w histogram fs notitle, \
+plot "./dats/nat-sn.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/nat-locks.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/nat-tm.dat" using 2:3:4:xtic(1) w histogram fs notitle
 
 set ylabel " "
 set y2label "CL" font ',55'
-plot "<(sed -n '1,16p' ./dats/cl-sn.dat)" using 2:3:4:xtic(1) w histogram fs notitle, \
+plot "./dats/cl-sn.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/cl-locks.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/cl-tm.dat" using 2:3:4:xtic(1) w histogram fs notitle
 
 set ylabel " "
 set y2label "PSD" font ',55'
-plot "<(sed -n '1,16p' ./dats/psd-sn.dat)" using 2:3:4:xtic(1) w histogram fs notitle, \
+plot "./dats/psd-sn.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/psd-locks.dat" using 2:3:4:xtic(1) w histogram fs notitle, \
 	 "./dats/psd-tm.dat" using 2:3:4:xtic(1) w histogram fs notitle
 
