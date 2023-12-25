@@ -1,10 +1,14 @@
 #!/bin/bash
 
+MAESTRO_EVAL_DIR="~/maestro-eval"
+
+source $MAESTRO_EVAL_DIR/bench/vars.sh
+
 sudo modprobe uio
-sudo insmod ~/maestro-eval/build/dpdk-kmods/linux/igb_uio/igb_uio.ko
+sudo insmod $MAESTRO_EVAL_DIR/build/dpdk-kmods/linux/igb_uio/igb_uio.ko
 
 sudo dpdk-hugepages.py --node 0 --reserve 42G
 sudo dpdk-hugepages.py --node 1 --reserve 42G
 
-sudo -E ~/maestro-eval/util/bind-igb-uio.sh 0000:d8:00.0
-sudo -E ~/maestro-eval/util/bind-igb-uio.sh 0000:d8:00.1
+sudo -E $MAESTRO_EVAL_DIR/util/bind-igb-uio.sh $TG_TX_DEV
+sudo -E $MAESTRO_EVAL_DIR/util/bind-igb-uio.sh $TG_RX_DEV
