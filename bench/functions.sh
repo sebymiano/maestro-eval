@@ -129,7 +129,7 @@ dut_check_file() {
 tg_check_file() {
 	file=$1
 
-	if ! dut_run "stat $file >/dev/null 2>&1"; then
+	if ! tg_run "stat $file >/dev/null 2>&1"; then
 		echo "ERROR: $file not found in TG. Exiting."
 		exit 1
 	fi
