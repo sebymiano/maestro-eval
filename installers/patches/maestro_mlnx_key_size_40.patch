@@ -1,3 +1,48 @@
+diff --git a/deps/librs3 b/deps/librs3
+--- a/deps/librs3
++++ b/deps/librs3
+@@ -1 +1 @@
+-Subproject commit 22dbc0f172205a522c1d46be62732d85c6ab8d9c
++Subproject commit 22dbc0f172205a522c1d46be62732d85c6ab8d9c-dirty
+diff --git a/maestro/boilerplate/locks.c b/maestro/boilerplate/locks.c
+index d4150ef7..25e46ba4 100644
+--- a/maestro/boilerplate/locks.c
++++ b/maestro/boilerplate/locks.c
+@@ -1496,7 +1496,7 @@ unsigned rte_ether_addr_hash(void *obj) {
+  **********************************************/
+ 
+ #define MBUF_CACHE_SIZE 256
+-#define RSS_HASH_KEY_LENGTH 52
++#define RSS_HASH_KEY_LENGTH 40
+ #define MAX_NUM_DEVICES 32 // this is quite arbitrary...
+ 
+ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
+diff --git a/maestro/boilerplate/shared-nothing.c b/maestro/boilerplate/shared-nothing.c
+index ddee6cd7..403a1baf 100644
+--- a/maestro/boilerplate/shared-nothing.c
++++ b/maestro/boilerplate/shared-nothing.c
+@@ -982,7 +982,7 @@ unsigned rte_ether_addr_hash(void *obj) {
+  **********************************************/
+ 
+ #define MBUF_CACHE_SIZE 256
+-#define RSS_HASH_KEY_LENGTH 52
++#define RSS_HASH_KEY_LENGTH 40
+ #define MAX_NUM_DEVICES 32 // this is quite arbitrary...
+ 
+ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
+diff --git a/maestro/boilerplate/tm.c b/maestro/boilerplate/tm.c
+index 26644a14..ec8d19ea 100644
+--- a/maestro/boilerplate/tm.c
++++ b/maestro/boilerplate/tm.c
+@@ -1336,7 +1336,7 @@ unsigned rte_ether_addr_hash(void *obj) {
+  **********************************************/
+ 
+ #define MBUF_CACHE_SIZE 256
+-#define RSS_HASH_KEY_LENGTH 52
++#define RSS_HASH_KEY_LENGTH 40
+ #define MAX_NUM_DEVICES 32 // this is quite arbitrary...
+ 
+ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
 diff --git a/maestro/maestro.py b/maestro/maestro.py
 index b966af2a..75a97fc1 100755
 --- a/maestro/maestro.py

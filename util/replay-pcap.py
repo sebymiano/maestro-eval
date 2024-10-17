@@ -525,13 +525,18 @@ def select_cores(all_cores, num_cores, to_ignore):
 
 def get_cfg(tx_pcie_dev, rx_pcie_dev, num_tx_cores, num_rx_cores):
 	all_cores     = get_all_cpus()
+	# Remove number 0 from the list of cores
+	for core in all_cores:
+		if core == 0:
+			all_cores.remove(core)
+
 	all_tx_cores  = get_pcie_dev_cpus(tx_pcie_dev)
 	all_rx_cores  = get_pcie_dev_cpus(rx_pcie_dev)
 
-	tx_cores      = select_cores(all_tx_cores, num_tx_cores + 1, [])
-	rx_cores      = select_cores(all_tx_cores, num_rx_cores + 1, tx_cores)
-	master_core   = select_cores(all_cores, 1, tx_cores + rx_cores)
-
+	master_core   = [0]
+	tx_cores      = select_cores(all_tx_cores, num_tx_cores + 1, master_core)
+	rx_cores      = select_cores(all_tx_cores, num_rx_cores + 1, master_core + tx_cores)
+	
 	tx_rx_cores = [ tx_cores[0] ]
 	tx_tx_cores = tx_cores[1:]
 
