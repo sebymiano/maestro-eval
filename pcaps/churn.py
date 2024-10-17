@@ -198,8 +198,8 @@ def generate_pkts(pcap_name, epochs_flows, size):
 					encoded[flow_id] = raw_pkt 
 
 				if not pkt_wr.header_present:
-					pkt_wr._write_header(raw_pkt)
-				pkt_wr._write_packet(raw_pkt)
+					pkt_wr.write_header(raw_pkt)
+				pkt_wr.write_packet(raw_pkt)
 
 				generated += 1
 				progress   = 100 * generated / total_pkts
