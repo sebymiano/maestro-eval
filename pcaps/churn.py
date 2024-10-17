@@ -166,13 +166,20 @@ def get_epochs_flows(epoch_flows, churn_fpm, epochs, exp_time_sec, max_flows, pr
 	
 	return epochs_flows, current_churn_fpm
 
-def generate_pkts(pcap_name, epochs_flows, size):
+def generate_pkts(pcap_name, epochs_flows, size, src_mac = None, dst_mac = None):
 	total_pkts  = sum([ len(ef) for ef in epochs_flows ])
 	generated   = 0
 	encoded     = {}
 	
-	src_mac     = utils.random_mac()
-	dst_mac     = utils.random_mac()
+	if src_mac is None:
+		src_mac     = utils.random_mac()
+	else:
+		src_mac     = src_mac
+
+	if dst_mac is None:
+		dst_mac     = utils.random_mac()
+	else:
+		dst_mac     = dst_mac
 
 	# Bypassing scapy's awfully slow wrpcap, have to use raw packets as input
 	# To get a raw packet from a scapy packet use `bytes_encode(pkt)`.
@@ -234,6 +241,10 @@ if __name__ == "__main__":
 	
 	parser.add_argument('--output',  help='output pcap', required=True)
 
+	parser.add_argument('--src-mac', help='source MAC address', required=False, type=str)
+
+	parser.add_argument('--dst-mac', help='destination MAC address', required=False, type=str)
+
 	args = parser.parse_args()
 
 	assert args.size >= MIN_PKT_SIZE_BYTES and args.size <= MAX_PKT_SIZE_BYTES
@@ -260,7 +271,7 @@ if __name__ == "__main__":
 	print()
 
 	print_report(report)
-	generate_pkts(output_fname, epochs_flows, args.size)
+	generate_pkts(output_fname, epochs_flows, args.size, args.src_mac, args.dst_mac)
 
 	save_report(report, report_fname)
 

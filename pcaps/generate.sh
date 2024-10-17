@@ -4,6 +4,10 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 
+source $SCRIPT_DIR/../bench/vars.sh
+
+SCRIPT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
+
 IMC10_FILE=univ2_trace.tgz
 IMC10_URL=https://pages.cs.wisc.edu/~tbenson/IMC_DATA/$IMC10_FILE
 IMC10_CHOSEN_TRACE=univ2_pt1
@@ -41,7 +45,7 @@ gen_uniform_trace() {
         return 0
     fi
     
-    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size
+    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
 }
 
 gen_uniform_internet_trace() {
@@ -52,7 +56,7 @@ gen_uniform_internet_trace() {
         return 0
     fi
 
-    $UNIFORM_SCRIPT --output $pcap --pcap $IMC10_TRACE --flows $num_flows --max $num_flows
+    $UNIFORM_SCRIPT --output $pcap --pcap $IMC10_TRACE --flows $num_flows --max $num_flows --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
 }
 
 gen_uniform_vpp_trace() {
@@ -65,7 +69,7 @@ gen_uniform_vpp_trace() {
         return 0
     fi
     
-    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --internet-only
+    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --internet-only --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
 }
 
 get_zipf_trace() {
@@ -77,7 +81,7 @@ get_zipf_trace() {
         return 0
     fi
 
-    $NORMALIZE_PACKET_SIZES_SCRIPT --output $pcap --input $IMC10_TRACE --size $pkt_size --max $max
+    $NORMALIZE_PACKET_SIZES_SCRIPT --output $pcap --input $IMC10_TRACE --size $pkt_size --max $max --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
 }
 
 gen_uniform_traces() {
@@ -101,7 +105,7 @@ get_churn_trace() {
         return 0
     fi
 
-    $CHURN_SCRIPT --rate $rate --size $size --expiration $exp_time --churn $churn --output $pcap
+    $CHURN_SCRIPT --rate $rate --size $size --expiration $exp_time --churn $churn --output $pcap --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
 }
 
 get_churn_traces() {

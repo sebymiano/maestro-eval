@@ -13,7 +13,7 @@ from typing import Union
 
 import utils
 
-def generate_pkts(pcap_name: str, flows: dict, size: Union[list[int],int]):
+def generate_pkts(pcap_name: str, flows: dict, size: Union[list[int],int], src_mac: str = None, dst_mac: str = None):
 	num_flows = len(flows)
 
 	if isinstance(size, int):
@@ -25,8 +25,15 @@ def generate_pkts(pcap_name: str, flows: dict, size: Union[list[int],int]):
 	
 	assert len(sizes) == n_pkts
 
-	src_mac = utils.random_mac()
-	dst_mac = utils.random_mac()
+	if src_mac is None:
+		src_mac     = utils.random_mac()
+	else:
+		src_mac     = src_mac
+
+	if dst_mac is None:
+		dst_mac     = utils.random_mac()
+	else:
+		dst_mac     = dst_mac
 
 	encoded = {}
 
@@ -73,6 +80,8 @@ if __name__ == "__main__":
 	parser.add_argument('--max', help='Grab at most {max} packets', type=int, default=-1, required=False)
 	parser.add_argument('--private-only', help='generate only flows on private networks', action='store_true', required=False)
 	parser.add_argument('--internet-only', help='generate Internet only IPs', action='store_true', required=False)
+	parser.add_argument('--src-mac', help='source MAC address', required=False, type=str)
+	parser.add_argument('--dst-mac', help='destination MAC address', required=False, type=str)
 
 	args = parser.parse_args()
 
@@ -98,7 +107,7 @@ if __name__ == "__main__":
 		pkt_sizes = args.size
 
 	flows = utils.create_n_unique_flows(num_flows, args.private_only, args.internet_only)
-	generate_pkts(args.output, flows, pkt_sizes)
+	generate_pkts(args.output, flows, pkt_sizes, args.src_mac, args.dst_mac)
 
 	elapsed = time.time() - start_time
 	hr_elapsed = timedelta(seconds=elapsed)

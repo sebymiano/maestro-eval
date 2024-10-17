@@ -12,12 +12,19 @@ from pathlib import Path
 
 import utils
 
-def generate_pkts(pcap_name: str, flows: dict, size: int):
+def generate_pkts(pcap_name: str, flows: dict, size: int, src_mac: str = None, dst_mac: str = None):
 	num_flows = len(flows)
 	n_pkts = num_flows
 
-	src_mac = utils.random_mac()
-	dst_mac = utils.random_mac()
+	if src_mac is None:
+		src_mac     = utils.random_mac()
+	else:
+		src_mac     = src_mac
+
+	if dst_mac is None:
+		dst_mac     = utils.random_mac()
+	else:
+		dst_mac     = dst_mac
 
 	encoded      = {}
 	translations = {}
@@ -69,6 +76,8 @@ if __name__ == "__main__":
 	parser.add_argument('--output',  help='Output pcap', required=True)
 	parser.add_argument('--size', help='Packet size ([64,1514])', type=int, required=True)
 	parser.add_argument('--max', help='Grab at most {max} packets', type=int, default=-1, required=False)
+	parser.add_argument('--src-mac', help='source MAC address', required=False, type=str)
+	parser.add_argument('--dst-mac', help='destination MAC address', required=False, type=str)
 
 	args = parser.parse_args()
 
@@ -84,7 +93,7 @@ if __name__ == "__main__":
 
 	assert args.size >= 64 and args.size <= 1514
 
-	generate_pkts(args.output, flows, args.size)
+	generate_pkts(args.output, flows, args.size, args.src_mac, args.dst_mac)
 
 	elapsed = time.time() - start_time
 	hr_elapsed = timedelta(seconds=elapsed)
