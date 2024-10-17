@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -euo pipefail
+#set -x
 
 SCRIPT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 
@@ -170,9 +171,9 @@ run_nf() {
 	local pcap="${3:-}"
 
 	if [[ ! -z "$pcap" ]]; then
-		dut_run_background "sudo ./$nf_exe --lcores $lcores -- $DUT_PCAPS_DIR/$pcap" "$DUT_SYNTHESIZED_DIR"
+		dut_run_background "sudo ./$nf_exe --lcores $lcores -w $DUT_TX_DEV -w $DUT_RX_DEV -- $DUT_PCAPS_DIR/$pcap" "$DUT_SYNTHESIZED_DIR"
 	else
-		dut_run_background "sudo ./$nf_exe --lcores $lcores" "$DUT_SYNTHESIZED_DIR"
+		dut_run_background "sudo ./$nf_exe --lcores $lcores -w $DUT_TX_DEV -w $DUT_RX_DEV" "$DUT_SYNTHESIZED_DIR"
 	fi
 }
 
