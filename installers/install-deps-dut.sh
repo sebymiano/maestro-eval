@@ -8,6 +8,7 @@ INSTALLERS_SCRIPT="$SCRIPT_DIR/installers.sh"
 source $INSTALLERS_SCRIPT
 
 setup
+install_dpdk
 install_maestro
 install_dpdk_kmods
 install_vpp

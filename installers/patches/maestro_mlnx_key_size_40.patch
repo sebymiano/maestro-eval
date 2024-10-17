@@ -1,0 +1,13 @@
+diff --git a/maestro/maestro.py b/maestro/maestro.py
+index b966af2a..75a97fc1 100755
+--- a/maestro/maestro.py
++++ b/maestro/maestro.py
+@@ -63,7 +63,7 @@ SYNTHESIZED_XML   = f"{BUILD_SYNTHESIZED_DIR}/nf_process.gen.xml"
+ LVA               = f"{BUILD_DIR}/report.lva"
+ LVA_DEBUG         = f"{BUILD_DIR}/report.txt"
+ RSS_CONF          = f"{BUILD_DIR}/rss_conf.txt"
+-RSS_KEY_LEN       = 52
++RSS_KEY_LEN       = 40
+ 
+ COMPATIBLE_OPTS = [ "ETH_RSS_NONFRAG_IPV4_TCP", "ETH_RSS_NONFRAG_IPV4_UDP" ]
+ 

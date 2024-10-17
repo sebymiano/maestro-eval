@@ -1,0 +1,13 @@
+diff --git a/include/rs3.h b/include/rs3.h
+index 9c0048c..b60a737 100644
+--- a/include/rs3.h
++++ b/include/rs3.h
+@@ -30,7 +30,7 @@ extern "C" {
+ #define HASH_OUTPUT_SIZE 4
+ 
+ //! \brief RSS key size in bytes
+-#define KEY_SIZE 52
++#define KEY_SIZE 40
+ 
+ //! \brief RSS hash output size in bits
+ #define HASH_OUTPUT_SIZE_BITS (HASH_OUTPUT_SIZE * 8)
