@@ -45,7 +45,7 @@ gen_uniform_trace() {
         return 0
     fi
     
-    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
+    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size
 }
 
 gen_uniform_internet_trace() {
@@ -56,7 +56,7 @@ gen_uniform_internet_trace() {
         return 0
     fi
 
-    $UNIFORM_SCRIPT --output $pcap --pcap $IMC10_TRACE --flows $num_flows --max $num_flows --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
+    $UNIFORM_SCRIPT --output $pcap --pcap $IMC10_TRACE --flows $num_flows --max $num_flows
 }
 
 gen_uniform_vpp_trace() {
@@ -69,7 +69,7 @@ gen_uniform_vpp_trace() {
         return 0
     fi
     
-    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --internet-only --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
+    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --internet-only
 }
 
 get_zipf_trace() {
@@ -81,7 +81,7 @@ get_zipf_trace() {
         return 0
     fi
 
-    $NORMALIZE_PACKET_SIZES_SCRIPT --output $pcap --input $IMC10_TRACE --size $pkt_size --max $max --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
+    $NORMALIZE_PACKET_SIZES_SCRIPT --output $pcap --input $IMC10_TRACE --size $pkt_size --max $max
 }
 
 gen_uniform_traces() {
@@ -105,7 +105,7 @@ get_churn_trace() {
         return 0
     fi
 
-    $CHURN_SCRIPT --rate $rate --size $size --expiration $exp_time --churn $churn --output $pcap --src-mac $TG_TX_MAC --dst-mac $DUT_RX_MAC
+    $CHURN_SCRIPT --rate $rate --size $size --expiration $exp_time --churn $churn --output $pcap
 }
 
 get_churn_traces() {
