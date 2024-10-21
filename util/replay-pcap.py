@@ -290,7 +290,7 @@ def build_pktgen_command(pcap, cfg, script):
 
 	cmd = [
 		"sudo", "-E",
-		f"{PKTGEN_DIR}/Builddir/app/pktgen",
+		f"{PKTGEN_DIR}/builddir/app/pktgen",
 		"-l", f"{all_used_cores}",
 		"-n", "4",
 		"--proc-type", "auto",
