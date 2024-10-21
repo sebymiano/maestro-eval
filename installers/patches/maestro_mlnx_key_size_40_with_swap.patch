@@ -1,0 +1,125 @@
+diff --git a/deps/librs3 b/deps/librs3
+--- a/deps/librs3
++++ b/deps/librs3
+@@ -1 +1 @@
+-Subproject commit 22dbc0f172205a522c1d46be62732d85c6ab8d9c
++Subproject commit 22dbc0f172205a522c1d46be62732d85c6ab8d9c-dirty
+diff --git a/maestro/boilerplate/locks.c b/maestro/boilerplate/locks.c
+index d4150ef7..968a24bf 100644
+--- a/maestro/boilerplate/locks.c
++++ b/maestro/boilerplate/locks.c
+@@ -1496,7 +1496,7 @@ unsigned rte_ether_addr_hash(void *obj) {
+  **********************************************/
+ 
+ #define MBUF_CACHE_SIZE 256
+-#define RSS_HASH_KEY_LENGTH 52
++#define RSS_HASH_KEY_LENGTH 40
+ #define MAX_NUM_DEVICES 32 // this is quite arbitrary...
+ 
+ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
+@@ -1727,6 +1727,14 @@ static void worker_main(void) {
+         } else { // includes flood when 2 devices, which is equivalent to just
+                  // a
+                  // send
++          struct rte_ether_hdr *eth_hdr = (struct rte_ether_hdr *)data;
++
++          // Swap MAC addresses
++          struct rte_ether_addr temp_mac;
++          rte_ether_addr_copy(&eth_hdr->src_addr, &temp_mac);
++          rte_ether_addr_copy(&eth_hdr->dst_addr, &eth_hdr->src_addr);
++          rte_ether_addr_copy(&temp_mac, &eth_hdr->dst_addr);
++          
+           mbufs_to_send[tx_count] = mbufs[n];
+           tx_count++;
+         }
+diff --git a/maestro/boilerplate/sequential.c b/maestro/boilerplate/sequential.c
+index 1607c0c6..bb3caee0 100644
+--- a/maestro/boilerplate/sequential.c
++++ b/maestro/boilerplate/sequential.c
+@@ -1181,6 +1181,15 @@ static void worker_main(void) {
+         } else { // includes flood when 2 devices, which is equivalent to just
+                  // a
+                  // send
++          // Swap MAC addresses after nf_process
++          struct rte_ether_hdr *eth_hdr = (struct rte_ether_hdr *)data;
++
++          // Swap MAC addresses
++          struct rte_ether_addr temp_mac;
++          rte_ether_addr_copy(&eth_hdr->src_addr, &temp_mac);
++          rte_ether_addr_copy(&eth_hdr->dst_addr, &eth_hdr->src_addr);
++          rte_ether_addr_copy(&temp_mac, &eth_hdr->dst_addr);
++          
+           mbufs_to_send[tx_count] = mbufs[n];
+           tx_count++;
+         }
+diff --git a/maestro/boilerplate/shared-nothing.c b/maestro/boilerplate/shared-nothing.c
+index ddee6cd7..123ad1cb 100644
+--- a/maestro/boilerplate/shared-nothing.c
++++ b/maestro/boilerplate/shared-nothing.c
+@@ -982,7 +982,7 @@ unsigned rte_ether_addr_hash(void *obj) {
+  **********************************************/
+ 
+ #define MBUF_CACHE_SIZE 256
+-#define RSS_HASH_KEY_LENGTH 52
++#define RSS_HASH_KEY_LENGTH 40
+ #define MAX_NUM_DEVICES 32 // this is quite arbitrary...
+ 
+ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
+@@ -1198,6 +1198,15 @@ static void worker_main(void) {
+         } else if (dst_device == FLOOD_FRAME) {
+           flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
+         } else {
++          // Swap MAC addresses after nf_process
++          struct rte_ether_hdr *eth_hdr = (struct rte_ether_hdr *)data;
++
++          // Swap MAC addresses
++          struct rte_ether_addr temp_mac;
++          rte_ether_addr_copy(&eth_hdr->src_addr, &temp_mac);
++          rte_ether_addr_copy(&eth_hdr->dst_addr, &eth_hdr->src_addr);
++          rte_ether_addr_copy(&temp_mac, &eth_hdr->dst_addr);
++          
+           mbufs_to_send[tx_count] = mbufs[n];
+           tx_count++;
+         }
+diff --git a/maestro/boilerplate/tm.c b/maestro/boilerplate/tm.c
+index 26644a14..a61c21ee 100644
+--- a/maestro/boilerplate/tm.c
++++ b/maestro/boilerplate/tm.c
+@@ -1336,7 +1336,7 @@ unsigned rte_ether_addr_hash(void *obj) {
+  **********************************************/
+ 
+ #define MBUF_CACHE_SIZE 256
+-#define RSS_HASH_KEY_LENGTH 52
++#define RSS_HASH_KEY_LENGTH 40
+ #define MAX_NUM_DEVICES 32 // this is quite arbitrary...
+ 
+ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
+@@ -2007,6 +2007,15 @@ static void worker_main(void) {
+         } else { // includes flood when 2 devices, which is equivalent to just
+                  // a
+                  // send
++          // Swap MAC addresses after nf_process
++          struct rte_ether_hdr *eth_hdr = (struct rte_ether_hdr *)data;
++
++          // Swap MAC addresses
++          struct rte_ether_addr temp_mac;
++          rte_ether_addr_copy(&eth_hdr->src_addr, &temp_mac);
++          rte_ether_addr_copy(&eth_hdr->dst_addr, &eth_hdr->src_addr);
++          rte_ether_addr_copy(&temp_mac, &eth_hdr->dst_addr);
++          
+           mbufs_to_send[tx_count] = mbufs[n];
+           tx_count++;
+         }
+diff --git a/maestro/maestro.py b/maestro/maestro.py
+index b966af2a..75a97fc1 100755
+--- a/maestro/maestro.py
++++ b/maestro/maestro.py
+@@ -63,7 +63,7 @@ SYNTHESIZED_XML   = f"{BUILD_SYNTHESIZED_DIR}/nf_process.gen.xml"
+ LVA               = f"{BUILD_DIR}/report.lva"
+ LVA_DEBUG         = f"{BUILD_DIR}/report.txt"
+ RSS_CONF          = f"{BUILD_DIR}/rss_conf.txt"
+-RSS_KEY_LEN       = 52
++RSS_KEY_LEN       = 40
+ 
+ COMPATIBLE_OPTS = [ "ETH_RSS_NONFRAG_IPV4_TCP", "ETH_RSS_NONFRAG_IPV4_UDP" ]
+ 
