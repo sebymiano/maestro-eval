@@ -298,7 +298,8 @@ def build_pktgen_command(pcap, cfg, script):
 		"-a", cfg['rx']['dev'],
 		"--",
 		"-N", "-T", "-P",
-		"-m", f"{tx_cfg},{rx_cfg}",
+		"-m", f"{tx_cfg}",
+		"-m", f"{rx_cfg}",
 		"-s", f"{cfg['tx']['port']}:{pcap}",
 		"-f", f"{script}",
 	]
