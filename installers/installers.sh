@@ -73,12 +73,12 @@ install_maestro() {
 
 		pushd $MAESTRO_DIR
 			git submodule update --init --recursive
-			# cp $SCRIPT_DIR/patches/maestro_mlnx_key_size_40.patch $MAESTRO_DIR/maestro_mlnx_key_size_40.patch
-			cp $SCRIPT_DIR/patches/maestro_mlnx_key_size_40_with_swap.patch $MAESTRO_DIR/maestro_mlnx_key_size_40_with_swap.patch
+			cp $SCRIPT_DIR/patches/maestro_mlnx_key_size_40.patch $MAESTRO_DIR/maestro_mlnx_key_size_40.patch
+			# cp $SCRIPT_DIR/patches/maestro_mlnx_key_size_40_with_swap.patch $MAESTRO_DIR/maestro_mlnx_key_size_40_with_swap.patch
 			
 			cp $SCRIPT_DIR/patches/librs3_mlnx_key_size_40.patch $MAESTRO_DIR/deps/librs3/librs3_mlnx_key_size_40.patch
-			# git apply maestro_mlnx_key_size_40.patch
-			git apply maestro_mlnx_key_size_40_with_swap.patch
+			git apply maestro_mlnx_key_size_40.patch
+			# git apply maestro_mlnx_key_size_40_with_swap.patch
 			pushd deps/librs3
 				git apply librs3_mlnx_key_size_40.patch
 			popd
