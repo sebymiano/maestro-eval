@@ -41,8 +41,19 @@ dut.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU22-64-STD"
 pktgen.hardware_type = params.phystype
 dut.hardware_type = params.phystype
 
+iface1_node1 = pktgen.addInterface("n1if1")
+iface2_node1 = pktgen.addInterface("n1if2")
+
+iface1_node2 = dut.addInterface("n2if1")
+iface2_node2 = dut.addInterface("n2if2")
+
 # Create a link between the two nodes
-link1 = request.Link(members = [pktgen, dut])
-link2 = request.Link(members = [pktgen, dut])
+link1 = request.Link("n1n2if1")
+link1.addInterface(iface1_node1)
+link1.addInterface(iface1_node2)
+
+link2 = request.Link("n1n2if2")
+link2.addInterface(iface2_node1)
+link2.addInterface(iface2_node2)
 
 portal.context.printRequestRSpec()
