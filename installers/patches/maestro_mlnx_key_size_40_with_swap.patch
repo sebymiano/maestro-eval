@@ -25,9 +25,9 @@ index d4150ef7..968a24bf 100644
 +
 +          // Swap MAC addresses
 +          struct rte_ether_addr temp_mac;
-+          rte_ether_addr_copy(&eth_hdr->src_addr, &temp_mac);
-+          rte_ether_addr_copy(&eth_hdr->dst_addr, &eth_hdr->src_addr);
-+          rte_ether_addr_copy(&temp_mac, &eth_hdr->dst_addr);
++          rte_ether_addr_copy(&eth_hdr->s_addr, &temp_mac);
++          rte_ether_addr_copy(&eth_hdr->d_addr, &eth_hdr->s_addr);
++          rte_ether_addr_copy(&temp_mac, &eth_hdr->d_addr);
 +          
            mbufs_to_send[tx_count] = mbufs[n];
            tx_count++;
@@ -45,9 +45,9 @@ index 1607c0c6..bb3caee0 100644
 +
 +          // Swap MAC addresses
 +          struct rte_ether_addr temp_mac;
-+          rte_ether_addr_copy(&eth_hdr->src_addr, &temp_mac);
-+          rte_ether_addr_copy(&eth_hdr->dst_addr, &eth_hdr->src_addr);
-+          rte_ether_addr_copy(&temp_mac, &eth_hdr->dst_addr);
++          rte_ether_addr_copy(&eth_hdr->s_addr, &temp_mac);
++          rte_ether_addr_copy(&eth_hdr->d_addr, &eth_hdr->s_addr);
++          rte_ether_addr_copy(&temp_mac, &eth_hdr->d_addr);
 +          
            mbufs_to_send[tx_count] = mbufs[n];
            tx_count++;
@@ -74,9 +74,9 @@ index ddee6cd7..123ad1cb 100644
 +
 +          // Swap MAC addresses
 +          struct rte_ether_addr temp_mac;
-+          rte_ether_addr_copy(&eth_hdr->src_addr, &temp_mac);
-+          rte_ether_addr_copy(&eth_hdr->dst_addr, &eth_hdr->src_addr);
-+          rte_ether_addr_copy(&temp_mac, &eth_hdr->dst_addr);
++          rte_ether_addr_copy(&eth_hdr->s_addr, &temp_mac);
++          rte_ether_addr_copy(&eth_hdr->d_addr, &eth_hdr->s_addr);
++          rte_ether_addr_copy(&temp_mac, &eth_hdr->d_addr);
 +          
            mbufs_to_send[tx_count] = mbufs[n];
            tx_count++;
@@ -103,9 +103,9 @@ index 26644a14..a61c21ee 100644
 +
 +          // Swap MAC addresses
 +          struct rte_ether_addr temp_mac;
-+          rte_ether_addr_copy(&eth_hdr->src_addr, &temp_mac);
-+          rte_ether_addr_copy(&eth_hdr->dst_addr, &eth_hdr->src_addr);
-+          rte_ether_addr_copy(&temp_mac, &eth_hdr->dst_addr);
++          rte_ether_addr_copy(&eth_hdr->s_addr, &temp_mac);
++          rte_ether_addr_copy(&eth_hdr->d_addr, &eth_hdr->s_addr);
++          rte_ether_addr_copy(&temp_mac, &eth_hdr->d_addr);
 +          
            mbufs_to_send[tx_count] = mbufs[n];
            tx_count++;
