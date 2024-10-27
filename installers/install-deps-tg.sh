@@ -12,3 +12,4 @@ setup_python_venv
 install_dpdk
 install_dpdk_kmods
 install_pktgen
+install_dpdk_burst_replay

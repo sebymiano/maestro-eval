@@ -16,6 +16,7 @@ RTE_TARGET=x86_64-native-linux-gcc
 DPDK_DIR="$BUILD_DIR/dpdk"
 DPDK_KMODS_DIR="$BUILD_DIR/dpdk-kmods"
 PKTGEN_DIR="$BUILD_DIR/Pktgen-DPDK"
+DPDK_BURST_REPLAY_DIR="$BUILD_DIR/dpdk-burst-replay"
 
 PYTHON_REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 
@@ -155,6 +156,42 @@ install_pktgen() {
 			sed -i 's/export lua_enabled="-Denable_lua=false"/export lua_enabled="-Denable_lua=true"/g' \
 				./tools/pktgen-build.sh
 			./tools/pktgen-build.sh build
+		popd
+	popd	
+}
+
+install_dpdk_burst_replay() {
+	if [ -d $DPDK_BURST_REPLAY_DIR ]; then
+		echo "DPDK Burst Replay directory already exists: $DPDK_BURST_REPLAY_DIR."
+		return 0
+	fi
+
+	if [ ! -d $DPDK_DIR ]; then
+		echo "DPDK directory not found. Installing it."
+		install_dpdk
+	fi
+
+	pushd $BUILD_DIR
+		git clone \
+			--depth 1 \
+			https://github.com/sebymiano/dpdk-burst-replay \
+			$DPDK_BURST_REPLAY_DIR
+		
+		pushd $DPDK_BURST_REPLAY_DIR
+			# DPDK places the libdpdk.pc (pkg-config file) in a non-standard location.
+			# We need to set enviroment variable PKG_CONFIG_PATH to the location of the file.
+			# On Ubuntu 20.04 build of DPDK it places the file
+			# here /usr/local/lib/x86_64-linux-gnu/pkgconfig/libdpdk.pc
+			# Source: https://github.com/pktgen/Pktgen-DPDK/blob/1e93fa88916b8f2c27b612d761a03cbf03d046de/INSTALL.md
+			PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig
+
+			# Install deps
+			sudo apt install libnuma-dev libyaml-dev libcyaml-dev libcsv-dev -y
+
+			mkdir -p build
+			cd build
+			cmake ..
+			make
 		popd
 	popd	
 }
