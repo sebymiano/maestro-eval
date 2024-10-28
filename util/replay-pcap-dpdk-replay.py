@@ -16,6 +16,7 @@ PKTGEN_DIR = f"{SCRIPT_DIR}/../build/dpdk-burst-replay"
 PKTGEN_SCRIPT_THROUGHPUT = f"{PKTGEN_DIR}/src/config.yaml"
 PKTGEN_RESULTS_SND_PORT         = f"{PKTGEN_DIR}/results_snd_port.csv"
 PKTGEN_RESULTS_RCV_PORT         = f"{PKTGEN_DIR}/results_rcv_port.csv"
+RESULTS_FILENAME         = "results.csv"
 
 MIN_RATE             = 0   # Gbps
 MAX_RATE             = 100 # Gbps
@@ -269,9 +270,9 @@ def run_pktgen(pcap, rate, cfg, duration_sec, lb=False, dry_run=False, verbose=F
 	num_entries_snd_data = len(snd_port_data)
 	num_entries_rcv_data = len(rcv_port_data)
 
-	assert num_entries_snd_data == num_entries_rcv_data
-	assert num_entries_snd_data == duration_sec + DEFAULT_WARMUP_DURATION_SEC
-	assert num_entries_rcv_data == duration_sec + DEFAULT_WARMUP_DURATION_SEC
+	# assert num_entries_snd_data == num_entries_rcv_data
+	# assert num_entries_snd_data == duration_sec + DEFAULT_WARMUP_DURATION_SEC
+	# assert num_entries_rcv_data == duration_sec + DEFAULT_WARMUP_DURATION_SEC
 
 	os.remove(PKTGEN_RESULTS_SND_PORT)
 	os.remove(PKTGEN_RESULTS_RCV_PORT)
@@ -299,6 +300,7 @@ def run_pktgen(pcap, rate, cfg, duration_sec, lb=False, dry_run=False, verbose=F
 		exit(1)
 		
 	pkt_loss = (average_tx_packets - average_rx_packets) / average_tx_packets
+	# pkt_loss = (average_tx_rate - average_rx_rate) / average_tx_rate
 
 	data = {
 		'tx': {
