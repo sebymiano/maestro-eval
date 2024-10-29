@@ -1869,9 +1869,11 @@ int main(int argc, char **argv) {
   signal(SIGTERM, signal_handler);
 
   LCORE_FOREACH_WORKER(lcore_id) {
+    printf("lauching worker on core %u\n", lcore_id);
     rte_eal_remote_launch((lcore_function_t *)worker_main, NULL, lcore_id);
   }
 
+  printf("Launching also worker thread. \n");
   worker_main();
 
   // Cleanup
