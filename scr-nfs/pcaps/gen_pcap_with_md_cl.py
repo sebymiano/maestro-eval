@@ -72,7 +72,7 @@ def get_md_from_pkt(pkt):
         md_elem.src_port = pkt.getlayer(UDP).sport
         md_elem.dst_port = pkt.getlayer(UDP).dport
     else:
-        print(f"Unsupported layer type: {pkt.getlayer(IP).proto}")
+        print(f"[gen_pcap_with_md_cl] Unsupported layer type: {pkt.getlayer(IP).proto}")
         sys.exit(1)
 
     md_elem.packet_len = len(pkt)
@@ -82,7 +82,7 @@ def get_md_from_pkt(pkt):
 
 
 def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len):
-    print(f"start [gen_pcap_with_md_cl] num_cores: {num_cores}")
+    print(f"[gen_pcap_with_md_cl] start num_cores: {num_cores}")
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -98,7 +98,7 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len):
 
     # Get the total number of packets for the progress bar
     total_packets = sum(1 for _ in read_packets(input_file))
-    print(f"Total packets in {input_file}: {total_packets}")
+    print(f"[gen_pcap_with_md_cl] Total packets in {input_file}: {total_packets}")
 
     with PcapWriter(output_file, linktype=DLT_EN10MB) as pkt_wr:
         for i, curr_pkt in read_packets(input_file):
@@ -126,7 +126,7 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len):
                 pkt_wr.write_header(raw_pkt)
             pkt_wr.write_packet(raw_pkt)
 
-            print(f"\rGenerating {output_file} ({100 * (i+1) / total_packets:3.2f} %) ...", end="")
+            print(f"\r[gen_pcap_with_md_cl] Generating {output_file} ({100 * (i+1) / total_packets:3.2f} %) ...", end="")
 
             # if len(new_pkts) >= PKTS_WRITE_MAX_NUM:
             #     wrpcap(output_file, new_pkts, append=append_flag)
@@ -137,7 +137,7 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len):
     #     wrpcap(output_file, new_pkts, append=append_flag)
     print("")
     print(f"[gen_pcap_with_md_cl] output pcap: {output_file}")
-    print("Done!")
+    print("[gen_pcap_with_md_cl] Done!")
 
 
 if __name__ == "__main__":
