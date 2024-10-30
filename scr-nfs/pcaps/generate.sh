@@ -46,4 +46,12 @@ gen_uniform_traces() {
     gen_uniform_trace 1500
 }
 
+# Check if poetry is installed
+if ! command -v poetry &> /dev/null; then
+    echo "Poetry is not installed. Please install it to proceed."
+    sudo apt install python3-poetry -y
+fi
+
+# Install dependencies with poetry
+poetry install
 gen_uniform_traces
