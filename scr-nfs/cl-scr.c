@@ -1195,6 +1195,9 @@ static int create_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_map,
         action[0].conf = &queue;
         action[1].type = RTE_FLOW_ACTION_TYPE_END;
 
+        printf("Validaing flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
+               mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+               mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5]);
         // Validate the flow rule
         retval = rte_flow_validate(port_id, &attr, pattern, action, &error);
         if (retval != 0) {
@@ -1212,7 +1215,13 @@ static int create_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_map,
                     mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
                     mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
                     error.message);
-            return -1;
+            return -1; 
+        } else {
+            mac_map[i].flow = flow;  // Store the flow pointer
+            printf("Created flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X directing to queue %d\n",
+                   mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+                   mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
+                   mac_map[i].queue_id);
         }
     }
     return 0;
@@ -1224,6 +1233,9 @@ static void destroy_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_ma
 
     for (size_t i = 0; i < mac_map_size; i++) {
         if (mac_map[i].flow) {
+            printf("Destroying flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
+                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5]);
             int retval = rte_flow_destroy(port_id, mac_map[i].flow, &error);
             if (retval != 0) {
                 fprintf(stderr, "Error destroying flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X: %s\n",
@@ -1264,24 +1276,24 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   unsigned lcore_id;
   int rxq = 0;
   RTE_LCORE_FOREACH(lcore_id) {
-    // Assign MAC address 10:10:10:10:10:XX where XX is the lcore number + 1
+    printf("Setting up RX queue %d for lcore %u\n", rxq, lcore_id);
     mac_map[rxq].mac[0] = 0x10;
     mac_map[rxq].mac[1] = 0x10;
     mac_map[rxq].mac[2] = 0x10;
     mac_map[rxq].mac[3] = 0x10;
     mac_map[rxq].mac[4] = 0x10;
-    mac_map[rxq].mac[5] = (uint8_t)(rxq + 1);  // XX is 1, 2, 3, etc.
+    mac_map[rxq].mac[5] = (uint8_t)(rxq);  // XX is 1, 2, 3, etc.
 
-    printf("Assigning MAC address %02X:%02X:%02X:%02X:%02X:%02X to lcore %u (queue %d)\n",
-           mac_map[rxq].mac[0], mac_map[rxq].mac[1], mac_map[rxq].mac[2],
-           mac_map[rxq].mac[3], mac_map[rxq].mac[4], mac_map[rxq].mac[5],
-           lcore_id, rxq);
-    // Allocate and set up RX queues
     lcores_conf[lcore_id].queue_id = rxq;
+    mac_map[rxq].queue_id = rxq;
+
+
     retval = rte_eth_rx_queue_setup(device, rxq, RX_QUEUE_SIZE,
                                     rte_eth_dev_socket_id(device), NULL,
                                     mbuf_pools[rxq]);
     if (retval != 0) {
+      fprintf(stderr, "Error setting up RX queue %d for device %d: %s\n",
+              rxq, device, rte_strerror(retval));
       return retval;
     }
 
@@ -1307,6 +1319,19 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   }
 
   return 0;
+}
+
+void print_md(uint16_t device, uint16_t lcore_id, struct metadata_elem *md) {
+  printf("Metadata: \n");
+  printf("  - Core ID: %u\n", lcore_id);
+  printf("  - Device: %u\n", device);
+  printf("  - Ether type: 0x%04x\n", md->ether_type);
+  printf("  - Packet length: %u\n", md->packet_len);
+  printf("  - Src Port: %u\n", md->src_port);
+  printf("  - Dst Port: %u\n", md->dst_port);
+  printf("  - Src IP: %u\n", md->src_addr);
+  printf("  - Dst IP: %u\n", md->dst_addr);
+  printf("\n");
 }
 
 static void worker_main(void) {
@@ -1357,6 +1382,7 @@ static void worker_main(void) {
 
         for (int i = 0; i < NUM_CORES - 1; i++) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
+          print_md(mbufs[n]->port, lcore_id, md);
 
           nf_process_scr(mbufs[n]->port, md, VIGOR_NOW);
         }
