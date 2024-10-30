@@ -103,8 +103,11 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, ov
     if num_cores > 1:
         pkt_history = [md_initial] * (num_cores - 1)
 
+    command = f'capinfos {input_file} | grep "Number of packets" | tr -d " " | grep -oP "Numberofpackets=\K\d+"'
+    output = subprocess.check_output(command, shell=True, universal_newlines=True)
+    total_packets = int(output.strip())
     # Get the total number of packets for the progress bar
-    total_packets = sum(1 for _ in read_packets(input_file))
+    # total_packets = sum(1 for _ in read_packets(input_file))
     print(f"[gen_pcap_with_md_cl] Total packets in {input_file}: {total_packets}")
 
     with PcapWriter(output_file, linktype=DLT_EN10MB) as pkt_wr:

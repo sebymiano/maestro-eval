@@ -52,6 +52,12 @@ if ! command -v poetry &> /dev/null; then
     sudo apt install python3-poetry -y
 fi
 
+# Check if capinfos is installed
+if ! command -v capinfos &> /dev/null; then
+    echo "capinfos is not installed. Please install it to proceed."
+    sudo apt install wireshark-common -y
+fi
+
 # Install dependencies with poetry
 poetry install
 gen_uniform_traces
