@@ -4,7 +4,7 @@ set -euo pipefail
 
 CURRENT_EXPERIMENT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 
-set -x
+# set -x
 FUNCTIONS_FILE="$CURRENT_EXPERIMENT_DIR/../bench/functions.sh"
 source $FUNCTIONS_FILE
 
