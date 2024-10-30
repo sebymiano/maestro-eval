@@ -81,13 +81,20 @@ def get_md_from_pkt(pkt):
     return md_elem
 
 
-def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len):
+def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, overwrite=False):
     print(f"[gen_pcap_with_md_cl] start num_cores: {num_cores}")
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
     output_file = f"{output_path}/dpdk_cl_scr_{num_cores}cores.pcap"
+
+    if os.path.exists(output_file):
+        if overwrite:  # If overwrite is enabled, delete the existing file
+            os.remove(output_file)
+        else:
+            print(f"[gen_pcap_with_md_cl] Output file {output_file} already exists. Exiting.")
+            return
     append_flag = False
     # input_pkts = rdpcap(input_file)
     new_pkts = list()
@@ -166,10 +173,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--pkt_len", dest="pkt_len", help="Pkt len", type=int, default=64
     )
+    parser.add_argument(
+        "--overwrite",
+        dest="overwrite",
+        help="Overwrite existing output file",
+        action="store_true",
+    )
 
     args = parser.parse_args()
     dst_mac = args.dst_mac
 
     gen_pcap_with_md_cl(
-        args.num_cores, dst_mac, args.output_path, args.input_file, args.pkt_len
+        args.num_cores, dst_mac, args.output_path, args.input_file, args.pkt_len, args.overwrite
     )
