@@ -1391,7 +1391,7 @@ static void worker_main(void) {
 
         for (int i = 0; i < NUM_CORES - 1; i++) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
-          print_md(mbufs[n]->port, lcore_id, md);
+          // print_md(mbufs[n]->port, lcore_id, md);
 
           nf_process_scr(mbufs[n]->port, md, VIGOR_NOW);
         }
