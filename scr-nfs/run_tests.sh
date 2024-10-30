@@ -4,6 +4,7 @@ set -euo pipefail
 
 CURRENT_EXPERIMENT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 
+set -x
 FUNCTIONS_FILE="$CURRENT_EXPERIMENT_DIR/../bench/functions.sh"
 source $FUNCTIONS_FILE
 
@@ -13,6 +14,7 @@ TG_SCR_PCAPS_DIR=$TG_EVAL_DIR/scr-nfs/pcaps
 PCAP_FOLDER="uniform_64_scr"
 
 TG_PCAPS_DIR=${TG_SCR_PCAPS_DIR}/${PCAP_FOLDER}
+DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs
 
 build_nf_scr() {
 	local nf_exe=$1
@@ -20,6 +22,7 @@ build_nf_scr() {
 	local nf_src="$nf_exe.c"
 
 	dut_run "mkdir -p $DUT_SYNTHESIZED_DIR"
+	dut_run "cp $DUT_SCR_DIR/$nf_src $DUT_SYNTHESIZED_DIR/${nf_src}"
 
 	if ! dut_run "stat $nf_exe > /dev/null 2>&1" "$DUT_SYNTHESIZED_DIR"; then
 		dut_run "SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
@@ -64,3 +67,5 @@ bench_balanced_nf_scr() {
 state_compute_replication() {
     bench_balanced_nf_scr "cl-scr" "dpdk_cl_scr_" "$CURRENT_EXPERIMENT_DIR" "cl-scr"
 }
+
+state_compute_replication
