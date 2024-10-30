@@ -48,7 +48,7 @@ traces:
   - path: "{{pcap}}"
     tx_queues: 8
 numacore: {{numacore}}
-nbruns: 100000000
+nbruns: -1
 timeout: {{duration}}
 max_mpps: -1
 max_mbps: {{rate}}
