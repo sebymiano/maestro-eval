@@ -61,8 +61,8 @@ def modify_pkt_size(pkt, pkt_len):
 def get_md_from_pkt(pkt):
     md_elem = MetadataElem()
 
-    md_elem.src_ip = int(ipaddress.ip_address(pkt.getlayer(IP).src))
-    md_elem.dst_ip = int(ipaddress.ip_address(pkt.getlayer(IP).dst))
+    md_elem.src_addr = int(ipaddress.ip_address(pkt.getlayer(IP).src))
+    md_elem.dst_addr = int(ipaddress.ip_address(pkt.getlayer(IP).dst))
     if pkt.haslayer(TCP):
         md_elem.protocol = socket.IPPROTO_TCP
         md_elem.src_port = pkt.getlayer(TCP).sport
