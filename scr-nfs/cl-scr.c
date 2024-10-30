@@ -1322,15 +1322,24 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
 }
 
 void print_md(uint16_t device, uint16_t lcore_id, struct metadata_elem *md) {
+  if (md->ether_type != 0x0008)
+    return;
+
+  struct in_addr src_ip, dst_ip;
+  src_ip.s_addr = md->src_addr;
+  dst_ip.s_addr = md->dst_addr;
+    
   printf("Metadata: \n");
   printf("  - Core ID: %u\n", lcore_id);
   printf("  - Device: %u\n", device);
-  printf("  - Ether type: 0x%04x\n", md->ether_type);
-  printf("  - Packet length: %u\n", md->packet_len);
-  printf("  - Src Port: %u\n", md->src_port);
-  printf("  - Dst Port: %u\n", md->dst_port);
-  printf("  - Src IP: %u\n", md->src_addr);
-  printf("  - Dst IP: %u\n", md->dst_addr);
+  printf("  - Ether type: 0x%04x\n", rte_be_to_cpu_16(md->ether_type));
+  printf("  - Packet length: %u\n", rte_be_to_cpu_16(md->packet_len));
+  printf("  - Src Port: %u\n", rte_be_to_cpu_16(md->src_port));
+  printf("  - Dst Port: %u\n", rte_be_to_cpu_16(md->dst_port));
+  printf("  - Src IP: %s\n", inet_ntoa(src_ip));
+  printf("  - Dst IP: %s\n", inet_ntoa(dst_ip));
+  // printf("  - Src IP: %u\n", md->src_addr);
+  // printf("  - Dst IP: %u\n", md->dst_addr);
   printf("\n");
 }
 
