@@ -10,12 +10,13 @@ SCRIPT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 
 ORIGINAL_PCAP_DIR=$SCRIPT_DIR/../../pcaps/
 GEN_PCAP_CL_SCRIPT=$SCRIPT_DIR/gen_pcap_with_md_cl.py
+GEN_PCAP_SBRIDGE_SCRIPT=$SCRIPT_DIR/gen_pcap_with_md_sbridge.py
 
 POETRY_CMD="poetry run python"
 
 gen_uniform_trace() {
-    pkt_size=$1
-    num_flows=40000
+    local target=$1
+    local pkt_size=$2
 
     pcap=$ORIGINAL_PCAP_DIR/uniform_${pkt_size}B.pcap
 
@@ -32,18 +33,34 @@ gen_uniform_trace() {
     for ((i = 1; i <= num_cores; i++)); do
         echo "Generating pcap for number of cores: $i"
 
-        # Run the pcap generation script for each core index
-        $POETRY_CMD $GEN_PCAP_CL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+        if [ "$target" == "cl" ]; then
+            # Run the pcap generation script for each core index
+            $POETRY_CMD $GEN_PCAP_CL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+        elif [ "$target" == "sbridge" ]; then
+            $POETRY_CMD $GEN_PCAP_SBRIDGE_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+        else
+            echo "Error: Unknown target '$target'."
+            return 1
+        fi
     done
 }
 
-gen_uniform_traces() {
-    gen_uniform_trace 64
-    gen_uniform_trace 128
-    gen_uniform_trace 256
-    gen_uniform_trace 512
-    gen_uniform_trace 1024
-    gen_uniform_trace 1500
+gen_uniform_traces_cl() {
+    gen_uniform_trace "cl" 64
+    gen_uniform_trace "cl" 128
+    gen_uniform_trace "cl" 256
+    gen_uniform_trace "cl" 512
+    gen_uniform_trace "cl" 1024
+    gen_uniform_trace "cl" 1500
+}
+
+gen_uniform_traces_sbridge() {
+    gen_uniform_trace "sbridge" 64
+    gen_uniform_trace "sbridge" 128
+    gen_uniform_trace "sbridge" 256
+    gen_uniform_trace "sbridge" 512
+    gen_uniform_trace "sbridge" 1024
+    gen_uniform_trace "sbridge" 1500
 }
 
 # Check if poetry is installed
@@ -60,4 +77,5 @@ fi
 
 # Install dependencies with poetry
 poetry install
-gen_uniform_traces
+gen_uniform_traces_cl
+gen_uniform_traces_sbridge
