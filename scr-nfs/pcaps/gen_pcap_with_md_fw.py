@@ -72,7 +72,7 @@ def get_md_from_pkt(pkt):
         md_elem.src_port = pkt.getlayer(UDP).sport
         md_elem.dst_port = pkt.getlayer(UDP).dport
     else:
-        print(f"[gen_pcap_with_md_cl] Unsupported layer type: {pkt.getlayer(IP).proto}")
+        print(f"[gen_pcap_with_md_fw] Unsupported layer type: {pkt.getlayer(IP).proto}")
         sys.exit(1)
 
     md_elem.packet_len = len(pkt)
@@ -81,8 +81,8 @@ def get_md_from_pkt(pkt):
     return md_elem
 
 
-def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, overwrite=False):
-    print(f"[gen_pcap_with_md_cl] start num_cores: {num_cores}")
+def gen_pcap_with_md_fw(num_cores, dst_mac, output_path, input_file, pkt_len, overwrite=False):
+    print(f"[gen_pcap_with_md_fw] start num_cores: {num_cores}")
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -93,7 +93,7 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, ov
         if overwrite:  # If overwrite is enabled, delete the existing file
             os.remove(output_file)
         else:
-            print(f"[gen_pcap_with_md_cl] Output file {output_file} already exists. Exiting.")
+            print(f"[gen_pcap_with_md_fw] Output file {output_file} already exists. Exiting.")
             return
     append_flag = False
     # input_pkts = rdpcap(input_file)
@@ -108,7 +108,7 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, ov
     total_packets = int(output.strip())
     # Get the total number of packets for the progress bar
     # total_packets = sum(1 for _ in read_packets(input_file))
-    print(f"[gen_pcap_with_md_cl] Total packets in {input_file}: {total_packets}")
+    print(f"[gen_pcap_with_md_fw] Total packets in {input_file}: {total_packets}")
 
     with PcapWriter(output_file, linktype=DLT_EN10MB) as pkt_wr:
         for i, curr_pkt in read_packets(input_file):
@@ -136,11 +136,11 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, ov
                 pkt_wr.write_header(raw_pkt)
             pkt_wr.write_packet(raw_pkt)
 
-            print(f"\r[gen_pcap_with_md_cl] Generating {output_file} ({100 * (i+1) / total_packets:3.2f} %) ...", end="")
+            print(f"\r[gen_pcap_with_md_fw] Generating {output_file} ({100 * (i+1) / total_packets:3.2f} %) ...", end="")
 
     print("")
-    print(f"[gen_pcap_with_md_cl] output pcap: {output_file}")
-    print("[gen_pcap_with_md_cl] Done!")
+    print(f"[gen_pcap_with_md_fw] output pcap: {output_file}")
+    print("[gen_pcap_with_md_fw] Done!")
 
 
 if __name__ == "__main__":
@@ -179,6 +179,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     dst_mac = args.dst_mac
 
-    gen_pcap_with_md_cl(
+    gen_pcap_with_md_fw(
         args.num_cores, dst_mac, args.output_path, args.input_file, args.pkt_len, args.overwrite
     )

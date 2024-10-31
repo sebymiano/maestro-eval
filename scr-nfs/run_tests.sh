@@ -12,6 +12,7 @@ DUT_SCR_PCAPS_DIR=$DUT_EVAL_DIR/scr-nfs/pcaps
 TG_SCR_PCAPS_DIR=$TG_EVAL_DIR/scr-nfs/pcaps
 
 PCAP_FOLDER_CL="cl_uniform_64_scr"
+PCAP_FOLDER_FW="fw_uniform_64_scr"
 PCAP_FOLDER_SBRIDGE="sbridge_uniform_64_scr"
 
 DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs
@@ -54,6 +55,9 @@ run_balanced_bench_scr() {
 		elif [ "$target" == "sbridge" ]; then
 			export TG_PCAPS_DIR=${TG_SCR_PCAPS_DIR}/${PCAP_FOLDER_SBRIDGE}
 			export DUT_PCAPS_DIR=${DUT_SCR_PCAPS_DIR}/${PCAP_FOLDER_SBRIDGE}
+		elif [ "$target" == "fw" ]; then
+			export TG_PCAPS_DIR=${TG_SCR_PCAPS_DIR}/${PCAP_FOLDER_FW}
+			export DUT_PCAPS_DIR=${DUT_SCR_PCAPS_DIR}/${PCAP_FOLDER_FW}
 		else
 			echo "Error: Unknown target '$target'."
 			return 1
@@ -82,6 +86,7 @@ bench_balanced_nf_scr() {
 state_compute_replication() {
 	bench_balanced_nf_scr "sbridge-scr" "sbridge" "dpdk_sbridge_scr_" "$CURRENT_EXPERIMENT_DIR" "sbridge-scr"
     bench_balanced_nf_scr "cl-scr" "cl" "dpdk_cl_scr_" "$CURRENT_EXPERIMENT_DIR" "cl-scr"
+	bench_balanced_nf_scr "fw-scr" "fw" "dpdk_fw_scr_" "$CURRENT_EXPERIMENT_DIR" "fw-scr"
 }
 
 state_compute_replication

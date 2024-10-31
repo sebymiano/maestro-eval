@@ -1911,51 +1911,34 @@ int main(int argc, char **argv) {
     printf("lauching worker on core %u\n", lcore_id);
     rte_eal_remote_launch((lcore_function_t *)worker_main, NULL, lcore_id);
   }
-
+  
   printf("Launching also worker thread. \n");
   worker_main();
 
-  // Cleanup
   destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
   return 0;
 }
 
-struct client {
-  uint32_t src_ip;
-  uint32_t dst_ip;
-};
-struct flow {
+struct FlowId {
   uint16_t src_port;
   uint16_t dst_port;
   uint32_t src_ip;
   uint32_t dst_ip;
   uint8_t protocol;
 };
-void flow_allocate(void* obj) {
-  struct flow *id = (struct flow *)obj;
-  id->src_port = 0;
-  id->dst_port = 0;
-  id->src_ip = 0;
-  id->dst_ip = 0;
-  id->protocol = 0;
-}
-uint32_t client_hash(void* obj) {
-  struct client *id = (struct client *)obj;
-  unsigned hash = 0;
-  hash = __builtin_ia32_crc32si(hash, id->src_ip);
-  hash = __builtin_ia32_crc32si(hash, id->dst_ip);
-  return hash;
-}
-bool flow_eq(void* a, void* b) {
-  struct flow *id1 = (struct flow *)a;
-  struct flow *id2 = (struct flow *)b;
+bool FlowId_eq(void* a, void* b) {
+  struct FlowId* id1 = (struct FlowId*)a;
+  struct FlowId* id2 = (struct FlowId*)b;
 
   return (id1->src_port == id2->src_port) &&(id1->dst_port == id2->dst_port)
       &&(id1->src_ip == id2->src_ip) &&(id1->dst_ip == id2->dst_ip)
           &&(id1->protocol == id2->protocol);
 }
-uint32_t flow_hash(void* obj) {
-  struct flow *id = (struct flow *)obj;
+void null_init(void* obj) {
+  *(uint32_t *)obj = 0;
+}
+uint32_t FlowId_hash(void* obj) {
+  struct FlowId* id = (struct FlowId*)obj;
 
   unsigned hash = 0;
   hash = __builtin_ia32_crc32si(hash, id->src_port);
@@ -1965,24 +1948,32 @@ uint32_t flow_hash(void* obj) {
   hash = __builtin_ia32_crc32si(hash, id->protocol);
   return hash;
 }
+void FlowId_allocate(void* obj) {
+  struct FlowId* id = (struct FlowId*)obj;
+  id->src_port = 0;
+  id->dst_port = 0;
+  id->src_ip = 0;
+  id->dst_ip = 0;
+  id->protocol = 0;
+}
 struct tcpudp_hdr {
   uint16_t src_port;
   uint16_t dst_port;
 };
 
 uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
-  0xf8, 0x80, 0x0, 0x0, 0xc0, 0x0, 0x2, 0xc8, 
-  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 
-  0x9b, 0x5b, 0x56, 0xa1, 0x1a, 0x57, 0xec, 0x50, 
-  0x71, 0x77, 0x37, 0xda, 0x7, 0xa, 0x9e, 0x6, 
-  0x9, 0xc2, 0x6e, 0xe7, 0x47, 0xf9, 0xb1, 0x2d
+  0x68, 0x0, 0x0, 0x34, 0x0, 0x35, 0x68, 0x0, 
+  0x68, 0x0, 0x0, 0x35, 0x68, 0x0, 0x0, 0x35, 
+  0xb6, 0x52, 0xa7, 0xdc, 0x21, 0x21, 0x5, 0x58, 
+  0x9a, 0xae, 0x15, 0x18, 0xa7, 0x6b, 0x49, 0x11, 
+  0xed, 0xa6, 0xa, 0xc8, 0xd6, 0x8f, 0x71, 0xff
 };
 uint8_t hash_key_1[RSS_HASH_KEY_LENGTH] = {
-  0xdc, 0xd6, 0x2c, 0x90, 0x6b, 0xa, 0x5b, 0x5f, 
-  0xa9, 0xc2, 0xd2, 0x8f, 0x6d, 0x33, 0x3d, 0x62, 
-  0xdd, 0x34, 0x92, 0xe2, 0xc0, 0xc, 0x74, 0x76, 
-  0xb5, 0xa7, 0x8b, 0x42, 0x4a, 0xf2, 0x6f, 0x26, 
-  0xc8, 0x9b, 0xb6, 0x33, 0xa5, 0x11, 0x92, 0x4e
+  0x0, 0x35, 0x68, 0x0, 0x68, 0x0, 0x0, 0x34, 
+  0x0, 0x35, 0x68, 0x0, 0x0, 0x35, 0x68, 0x0, 
+  0xca, 0x81, 0xc8, 0x5a, 0xf7, 0xee, 0x7b, 0x48, 
+  0x9a, 0xe2, 0x8c, 0xc8, 0x48, 0x88, 0xec, 0x52, 
+  0x3, 0x0, 0x9f, 0x85, 0xc3, 0x32, 0xe1, 0xfe
 };
 
 struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
@@ -1998,67 +1989,67 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
   }
 };
 
-bool flow_eq(void* a, void* b) ;
-uint32_t flow_hash(void* obj) ;
-void flow_allocate(void* obj) ;
-uint32_t client_hash(void* obj) ;
+bool FlowId_eq(void* a, void* b) ;
+uint32_t FlowId_hash(void* obj) ;
+void FlowId_allocate(void* obj) ;
+void null_init(void* obj) ;
 RTE_DEFINE_PER_LCORE(struct Map*, _map);
 RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
 RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
-RTE_DEFINE_PER_LCORE(struct Sketch*, _sketch);
 
 bool nf_init() {
   struct Map** map_ptr = &RTE_PER_LCORE(_map);
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  struct Sketch** sketch_ptr = &RTE_PER_LCORE(_sketch);
-  int map_allocation_succeeded__1 = map_allocate(flow_eq, flow_hash, spread_data_among_cores(65536u), &(*map_ptr));
+  int map_allocation_succeeded__1 = map_allocate(FlowId_eq, FlowId_hash, spread_data_among_cores(65536u), &(*map_ptr));
 
-  // 113
   // 114
   // 115
   // 116
+  // 117
   if (map_allocation_succeeded__1) {
-    int vector_alloc_success__4 = vector_allocate(13u, spread_data_among_cores(65536u), flow_allocate, &(*vector_ptr));
+    int vector_alloc_success__4 = vector_allocate(13u, spread_data_among_cores(65536u), FlowId_allocate, &(*vector_ptr));
 
-    // 113
     // 114
     // 115
+    // 116
     if (vector_alloc_success__4) {
-      int is_dchain_allocated__7 = dchain_allocate(spread_data_among_cores(65536u), &(*dchain_ptr));
+      int vector_alloc_success__7 = vector_allocate(4u, spread_data_among_cores(65536u), null_init, &(*vector_1_ptr));
 
-      // 113
       // 114
-      if (is_dchain_allocated__7) {
-        int sketch_allocation_succeeded__10 = sketch_allocate(client_hash, spread_data_among_cores(1024u), 64u, &(*sketch_ptr));
+      // 115
+      if (vector_alloc_success__7) {
+        int is_dchain_allocated__10 = dchain_allocate(spread_data_among_cores(65536u), &(*dchain_ptr));
 
-        // 113
-        if (sketch_allocation_succeeded__10) {
+        // 114
+        if (is_dchain_allocated__10) {
           return 1;
         }
 
-        // 114
+        // 115
         else {
           return 0;
-        } // !sketch_allocation_succeeded__10
+        } // !is_dchain_allocated__10
 
       }
 
-      // 115
+      // 116
       else {
         return 0;
-      } // !is_dchain_allocated__7
+      } // !vector_alloc_success__7
 
     }
 
-    // 116
+    // 117
     else {
       return 0;
     } // !vector_alloc_success__4
 
   }
 
-  // 117
+  // 118
   else {
     return 0;
   } // !map_allocation_succeeded__1
@@ -2068,17 +2059,77 @@ bool nf_init() {
 int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now) {
   struct Map** map_ptr = &RTE_PER_LCORE(_map);
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  struct Sketch** sketch_ptr = &RTE_PER_LCORE(_sketch);
+  int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
 
+  // 120
+  // 121
+  // 122
+  // 123
+  // 124
+  // 125
   if ((8u == state_elem->ether_type) & (20ul <= (4294967282u + state_elem->packet_len))) {
+    // 120
+    // 121
+    // 122
+    // 123
+    // 124
     if (((6u == state_elem->protocol) | (17u == state_elem->protocol)) & ((4294967262u + state_elem->packet_len) >= 4ul)) {
-      int number_of_freed_flows__36 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
-      sketch_expire((*sketch_ptr), now - 100000000000ul);
-
+      // 120
+      // 121
       if (0u != device) {
-        return 0;
-      } else {
+        uint8_t map_key[13];
+        map_key[0u] = state_elem->dst_port & 0xff;
+        map_key[1u] = (state_elem->dst_port >> 8) & 0xff;
+        map_key[2u] = state_elem->src_port & 0xff;
+        map_key[3u] = (state_elem->src_port >> 8) & 0xff;
+        map_key[4u] = state_elem->dst_addr & 0xff;
+        map_key[5u] = (state_elem->dst_addr >> 8) & 0xff;
+        map_key[6u] = (state_elem->dst_addr >> 16) & 0xff;
+        map_key[7u] = (state_elem->dst_addr >> 24) & 0xff;
+        map_key[8u] = state_elem->src_addr & 0xff;
+        map_key[9u] = (state_elem->src_addr >> 8) & 0xff;
+        map_key[10u] = (state_elem->src_addr >> 16) & 0xff;
+        map_key[11u] = (state_elem->src_addr >> 24) & 0xff;
+        map_key[12u] = state_elem->protocol;
+        int map_value_out;
+        int map_has_this_key__39 = map_get((*map_ptr), map_key, &map_value_out);
+
+        // 120
+        if (0u == map_has_this_key__39) {
+          // dropping
+          return device;
+        }
+
+        // 121
+        else {
+          uint8_t* vector_value_out = 0u;
+          vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
+          vector_return((*vector_1_ptr), map_value_out, vector_value_out);
+          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          /* No need to modify the MAC address in the SCR calculation */
+          // ether_header_1->d_addr.addr_bytes[0ul] = 1u;
+          // ether_header_1->d_addr.addr_bytes[1ul] = 35u;
+          // ether_header_1->d_addr.addr_bytes[2ul] = 69u;
+          // ether_header_1->d_addr.addr_bytes[3ul] = 103u;
+          // ether_header_1->d_addr.addr_bytes[4ul] = 137u;
+          // ether_header_1->d_addr.addr_bytes[5ul] = 0u;
+          // ether_header_1->s_addr.addr_bytes[0ul] = 0u;
+          // ether_header_1->s_addr.addr_bytes[1ul] = 0u;
+          // ether_header_1->s_addr.addr_bytes[2ul] = 0u;
+          // ether_header_1->s_addr.addr_bytes[3ul] = 0u;
+          // ether_header_1->s_addr.addr_bytes[4ul] = 0u;
+          // ether_header_1->s_addr.addr_bytes[5ul] = 0u;
+          return 0;
+        } // !(0u == map_has_this_key__39)
+
+      }
+
+      // 122
+      // 123
+      // 124
+      else {
         uint8_t map_key[13];
         map_key[0u] = state_elem->src_port & 0xff;
         map_key[1u] = (state_elem->src_port >> 8) & 0xff;
@@ -2094,30 +2145,18 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
         map_key[11u] = (state_elem->dst_addr >> 24) & 0xff;
         map_key[12u] = state_elem->protocol;
         int map_value_out;
-        int map_has_this_key__48 = map_get((*map_ptr), map_key, &map_value_out);
-        uint8_t sketch_key[8];
-        sketch_key[0u] = state_elem->src_addr & 0xff;
-        sketch_key[1u] = (state_elem->src_addr >> 8) & 0xff;
-        sketch_key[2u] = (state_elem->src_addr >> 16) & 0xff;
-        sketch_key[3u] = (state_elem->src_addr >> 24) & 0xff;
-        sketch_key[4u] = state_elem->dst_addr & 0xff;
-        sketch_key[5u] = (state_elem->dst_addr >> 8) & 0xff;
-        sketch_key[6u] = (state_elem->dst_addr >> 16) & 0xff;
-        sketch_key[7u] = (state_elem->dst_addr >> 24) & 0xff;
-        sketch_compute_hashes((*sketch_ptr), &sketch_key);
+        int map_has_this_key__61 = map_get((*map_ptr), map_key, &map_value_out);
 
-        // 120
-        // 121
         // 122
-        if (0u == map_has_this_key__48) {
-          uint32_t new_index__52;
-          int out_of_space__52 = !dchain_allocate_new_index((*dchain_ptr), &new_index__52, now);
+        // 123
+        if (0u == map_has_this_key__61) {
+          uint32_t new_index__64;
+          int out_of_space__64 = !dchain_allocate_new_index((*dchain_ptr), &new_index__64, now);
 
-          // 120
-          // 121
-          if (false == ((out_of_space__52) & (0u == number_of_freed_flows__36))) {
+          // 122
+          if (false == ((out_of_space__64) & (0u == number_of_freed_flows__27))) {
             uint8_t* vector_value_out = 0u;
-            vector_borrow((*vector_ptr), new_index__52, (void**)(&vector_value_out));
+            vector_borrow((*vector_ptr), new_index__64, (void**)(&vector_value_out));
             vector_value_out[0u] = state_elem->src_port & 0xff;
             vector_value_out[1u] = (state_elem->src_port >> 8) & 0xff;
             vector_value_out[2u] = state_elem->dst_port & 0xff;
@@ -2131,44 +2170,88 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
             vector_value_out[10u] = (state_elem->dst_addr >> 16) & 0xff;
             vector_value_out[11u] = (state_elem->dst_addr >> 24) & 0xff;
             vector_value_out[12u] = state_elem->protocol;
-            map_put((*map_ptr), vector_value_out, new_index__52);
-            vector_return((*vector_ptr), new_index__52, vector_value_out);
-            int overflow__58 = sketch_fetch((*sketch_ptr));
+            map_put((*map_ptr), vector_value_out, new_index__64);
+            vector_return((*vector_ptr), new_index__64, vector_value_out);
+            uint8_t* vector_value_out_1 = 0u;
+            vector_borrow((*vector_1_ptr), new_index__64, (void**)(&vector_value_out_1));
+            vector_value_out_1[0u] = device & 0xff;
+            vector_value_out_1[1u] = (device >> 8) & 0xff;
+            vector_value_out_1[2u] = 0u;
+            vector_value_out_1[3u] = 0u;
+            vector_return((*vector_1_ptr), new_index__64, vector_value_out_1);
+            /* No need to modify MAC address in the SCR calculation */
+            // ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+            // ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+            // ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+            // ether_header_1->d_addr.addr_bytes[3] = 0x13;
+            // ether_header_1->d_addr.addr_bytes[4] = 0x08;
+            // ether_header_1->d_addr.addr_bytes[5] = 0x43;
 
-            // 120
-            if (0u == overflow__58) {
-              int success__61 = sketch_touch_buckets((*sketch_ptr), now);
-              return 1;
-            }
-
-            // 121
-            else {
-              // dropping
-              return device;
-            } // !(0u == overflow__58)
-
+            // // Set source MAC address: b8:3f:d2:13:08:db
+            // ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+            // ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+            // ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+            // ether_header_1->s_addr.addr_bytes[3] = 0x13;
+            // ether_header_1->s_addr.addr_bytes[4] = 0x08;
+            // ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+            return 1;
           }
 
-          // 122
+          // 123
           else {
+            // ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+            // ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+            // ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+            // ether_header_1->d_addr.addr_bytes[3] = 0x13;
+            // ether_header_1->d_addr.addr_bytes[4] = 0x08;
+            // ether_header_1->d_addr.addr_bytes[5] = 0x43;
+
+            // // Set source MAC address: b8:3f:d2:13:08:db
+            // ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+            // ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+            // ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+            // ether_header_1->s_addr.addr_bytes[3] = 0x13;
+            // ether_header_1->s_addr.addr_bytes[4] = 0x08;
+            // ether_header_1->s_addr.addr_bytes[5] = 0xdb;
             return 1;
-          } // !(false == ((out_of_space__52) & (0u == number_of_freed_flows__36)))
+          } // !(false == ((out_of_space__64) & (0u == number_of_freed_flows__27)))
 
         }
 
-        // 123
+        // 124
         else {
           dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
-          sketch_refresh((*sketch_ptr), now);
+          // ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+          // ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+          // ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+          // ether_header_1->d_addr.addr_bytes[3] = 0x13;
+          // ether_header_1->d_addr.addr_bytes[4] = 0x08;
+          // ether_header_1->d_addr.addr_bytes[5] = 0x43;
+
+          // // Set source MAC address: b8:3f:d2:13:08:db
+          // ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+          // ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+          // ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+          // ether_header_1->s_addr.addr_bytes[3] = 0x13;
+          // ether_header_1->s_addr.addr_bytes[4] = 0x08;
+          // ether_header_1->s_addr.addr_bytes[5] = 0xdb;
           return 1;
-        } // !(0u == map_has_this_key__48)
+        } // !(0u == map_has_this_key__61)
 
       } // !(0u != device)
-    } else {
+
+    }
+
+    // 125
+    else {
       // dropping
       return device;
     } // !(((6u == ipv4_header_1->next_proto_id) | (17u == ipv4_header_1->next_proto_id)) & ((4294967262u + packet_length) >= 4ul))
-  } else {
+
+  }
+
+  // 126
+  else {
     // dropping
     return device;
   } // !((8u == ether_header_1->ether_type) & (20ul <= (4294967282u + packet_length)))
@@ -2177,38 +2260,82 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
 int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
   struct Map** map_ptr = &RTE_PER_LCORE(_map);
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  struct Sketch** sketch_ptr = &RTE_PER_LCORE(_sketch);
+  int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
 
-  // 119
   // 120
   // 121
   // 122
   // 123
   // 124
+  // 125
   if ((8u == ether_header_1->ether_type) & (20ul <= (4294967282u + packet_length))) {
     struct rte_ipv4_hdr* ipv4_header_1 = (struct rte_ipv4_hdr*)(packet + 14u);
 
-    // 119
     // 120
     // 121
     // 122
     // 123
+    // 124
     if (((6u == ipv4_header_1->next_proto_id) | (17u == ipv4_header_1->next_proto_id)) & ((4294967262u + packet_length) >= 4ul)) {
       struct tcpudp_hdr* tcpudp_header_1 = (struct tcpudp_hdr*)(packet + (14u + 20u));
-      int number_of_freed_flows__36 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
-      sketch_expire((*sketch_ptr), now - 100000000000ul);
-
-      // 119
-      if (0u != device) {
-        return 0;
-      }
 
       // 120
       // 121
+      if (0u != device) {
+        uint8_t map_key[13];
+        map_key[0u] = tcpudp_header_1->dst_port & 0xff;
+        map_key[1u] = (tcpudp_header_1->dst_port >> 8) & 0xff;
+        map_key[2u] = tcpudp_header_1->src_port & 0xff;
+        map_key[3u] = (tcpudp_header_1->src_port >> 8) & 0xff;
+        map_key[4u] = ipv4_header_1->dst_addr & 0xff;
+        map_key[5u] = (ipv4_header_1->dst_addr >> 8) & 0xff;
+        map_key[6u] = (ipv4_header_1->dst_addr >> 16) & 0xff;
+        map_key[7u] = (ipv4_header_1->dst_addr >> 24) & 0xff;
+        map_key[8u] = ipv4_header_1->src_addr & 0xff;
+        map_key[9u] = (ipv4_header_1->src_addr >> 8) & 0xff;
+        map_key[10u] = (ipv4_header_1->src_addr >> 16) & 0xff;
+        map_key[11u] = (ipv4_header_1->src_addr >> 24) & 0xff;
+        map_key[12u] = ipv4_header_1->next_proto_id;
+        int map_value_out;
+        int map_has_this_key__39 = map_get((*map_ptr), map_key, &map_value_out);
+
+        // 120
+        if (0u == map_has_this_key__39) {
+          // dropping
+          return device;
+        }
+
+        // 121
+        else {
+          uint8_t* vector_value_out = 0u;
+          vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
+          vector_return((*vector_1_ptr), map_value_out, vector_value_out);
+          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->d_addr.addr_bytes[3] = 0x13;
+          ether_header_1->d_addr.addr_bytes[4] = 0x08;
+          ether_header_1->d_addr.addr_bytes[5] = 0x43;
+
+          // Set source MAC address: b8:3f:d2:13:08:db
+          ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->s_addr.addr_bytes[3] = 0x13;
+          ether_header_1->s_addr.addr_bytes[4] = 0x08;
+          ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+          return 0;
+        } // !(0u == map_has_this_key__39)
+
+      }
+
       // 122
       // 123
+      // 124
       else {
         uint8_t map_key[13];
         map_key[0u] = tcpudp_header_1->src_port & 0xff;
@@ -2225,30 +2352,18 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
         map_key[11u] = (ipv4_header_1->dst_addr >> 24) & 0xff;
         map_key[12u] = ipv4_header_1->next_proto_id;
         int map_value_out;
-        int map_has_this_key__48 = map_get((*map_ptr), map_key, &map_value_out);
-        uint8_t sketch_key[8];
-        sketch_key[0u] = ipv4_header_1->src_addr & 0xff;
-        sketch_key[1u] = (ipv4_header_1->src_addr >> 8) & 0xff;
-        sketch_key[2u] = (ipv4_header_1->src_addr >> 16) & 0xff;
-        sketch_key[3u] = (ipv4_header_1->src_addr >> 24) & 0xff;
-        sketch_key[4u] = ipv4_header_1->dst_addr & 0xff;
-        sketch_key[5u] = (ipv4_header_1->dst_addr >> 8) & 0xff;
-        sketch_key[6u] = (ipv4_header_1->dst_addr >> 16) & 0xff;
-        sketch_key[7u] = (ipv4_header_1->dst_addr >> 24) & 0xff;
-        sketch_compute_hashes((*sketch_ptr), &sketch_key);
+        int map_has_this_key__61 = map_get((*map_ptr), map_key, &map_value_out);
 
-        // 120
-        // 121
         // 122
-        if (0u == map_has_this_key__48) {
-          uint32_t new_index__52;
-          int out_of_space__52 = !dchain_allocate_new_index((*dchain_ptr), &new_index__52, now);
+        // 123
+        if (0u == map_has_this_key__61) {
+          uint32_t new_index__64;
+          int out_of_space__64 = !dchain_allocate_new_index((*dchain_ptr), &new_index__64, now);
 
-          // 120
-          // 121
-          if (false == ((out_of_space__52) & (0u == number_of_freed_flows__36))) {
+          // 122
+          if (false == ((out_of_space__64) & (0u == number_of_freed_flows__27))) {
             uint8_t* vector_value_out = 0u;
-            vector_borrow((*vector_ptr), new_index__52, (void**)(&vector_value_out));
+            vector_borrow((*vector_ptr), new_index__64, (void**)(&vector_value_out));
             vector_value_out[0u] = tcpudp_header_1->src_port & 0xff;
             vector_value_out[1u] = (tcpudp_header_1->src_port >> 8) & 0xff;
             vector_value_out[2u] = tcpudp_header_1->dst_port & 0xff;
@@ -2262,43 +2377,78 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             vector_value_out[10u] = (ipv4_header_1->dst_addr >> 16) & 0xff;
             vector_value_out[11u] = (ipv4_header_1->dst_addr >> 24) & 0xff;
             vector_value_out[12u] = ipv4_header_1->next_proto_id;
-            map_put((*map_ptr), vector_value_out, new_index__52);
-            vector_return((*vector_ptr), new_index__52, vector_value_out);
-            int overflow__58 = sketch_fetch((*sketch_ptr));
+            map_put((*map_ptr), vector_value_out, new_index__64);
+            vector_return((*vector_ptr), new_index__64, vector_value_out);
+            uint8_t* vector_value_out_1 = 0u;
+            vector_borrow((*vector_1_ptr), new_index__64, (void**)(&vector_value_out_1));
+            vector_value_out_1[0u] = device & 0xff;
+            vector_value_out_1[1u] = (device >> 8) & 0xff;
+            vector_value_out_1[2u] = 0u;
+            vector_value_out_1[3u] = 0u;
+            vector_return((*vector_1_ptr), new_index__64, vector_value_out_1);
+            ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->d_addr.addr_bytes[3] = 0x13;
+            ether_header_1->d_addr.addr_bytes[4] = 0x08;
+            ether_header_1->d_addr.addr_bytes[5] = 0x43;
 
-            // 120
-            if (0u == overflow__58) {
-              int success__61 = sketch_touch_buckets((*sketch_ptr), now);
-              return 1;
-            }
-
-            // 121
-            else {
-              // dropping
-              return device;
-            } // !(0u == overflow__58)
-
+            // Set source MAC address: b8:3f:d2:13:08:db
+            ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->s_addr.addr_bytes[3] = 0x13;
+            ether_header_1->s_addr.addr_bytes[4] = 0x08;
+            ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+            return 1;
           }
 
-          // 122
+          // 123
           else {
+            ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->d_addr.addr_bytes[3] = 0x13;
+            ether_header_1->d_addr.addr_bytes[4] = 0x08;
+            ether_header_1->d_addr.addr_bytes[5] = 0x43;
+
+            // Set source MAC address: b8:3f:d2:13:08:db
+            ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->s_addr.addr_bytes[3] = 0x13;
+            ether_header_1->s_addr.addr_bytes[4] = 0x08;
+            ether_header_1->s_addr.addr_bytes[5] = 0xdb;
             return 1;
-          } // !(false == ((out_of_space__52) & (0u == number_of_freed_flows__36)))
+          } // !(false == ((out_of_space__64) & (0u == number_of_freed_flows__27)))
 
         }
 
-        // 123
+        // 124
         else {
           dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
-          sketch_refresh((*sketch_ptr), now);
+          ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->d_addr.addr_bytes[3] = 0x13;
+          ether_header_1->d_addr.addr_bytes[4] = 0x08;
+          ether_header_1->d_addr.addr_bytes[5] = 0x43;
+
+          // Set source MAC address: b8:3f:d2:13:08:db
+          ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->s_addr.addr_bytes[3] = 0x13;
+          ether_header_1->s_addr.addr_bytes[4] = 0x08;
+          ether_header_1->s_addr.addr_bytes[5] = 0xdb;
           return 1;
-        } // !(0u == map_has_this_key__48)
+        } // !(0u == map_has_this_key__61)
 
       } // !(0u != device)
 
     }
 
-    // 124
+    // 125
     else {
       // dropping
       return device;
@@ -2306,7 +2456,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
 
   }
 
-  // 125
+  // 126
   else {
     // dropping
     return device;
