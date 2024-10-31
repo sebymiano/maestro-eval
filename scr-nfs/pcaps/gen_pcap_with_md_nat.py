@@ -87,7 +87,7 @@ def gen_pcap_with_md_nat(num_cores, dst_mac, output_path, input_file, pkt_len, o
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    output_file = f"{output_path}/dpdk_fw_scr_{num_cores}cores.pcap"
+    output_file = f"{output_path}/dpdk_nat_scr_{num_cores}cores.pcap"
 
     if os.path.exists(output_file):
         if overwrite:  # If overwrite is enabled, delete the existing file
