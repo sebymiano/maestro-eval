@@ -44,7 +44,7 @@ def get_md_from_pkt(pkt):
 
     # Extract and store only the destination MAC address from the Ethernet layer
     if pkt.haslayer(Ether):
-        md_elem.mac_dst_addr = int.from_bytes(pkt.getlayer(Ether).dst.replace(":", ""), "big")
+        md_elem.mac_dst_addr = int(pkt.getlayer(Ether).dst.replace(":", ""), 16)
 
     return md_elem
 
