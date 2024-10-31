@@ -13,20 +13,16 @@ class MetadataElem:
     def __init__(self):
         self.ether_type = 0
         self.packet_len = 0
-        self.src_port = 0
         self.dst_port = 0
         self.src_addr = 0
-        self.dst_addr = 0
         self.protocol = 0
 
     def __str__(self):
         out = ""
         out += f"Ether type: {self.ether_type}\n"
         out += f"Packet len: {self.packet_len}\n"
-        out += f"Source port: {self.src_port}\n"
         out += f"Dest port: {self.dst_port}\n"
         out += f"Source IP: {ipaddress.IPv4Address(self.src_addr)}\n"
-        out += f"Dest IP: {ipaddress.IPv4Address(self.dst_addr)}\n"
         out += f"Protocol: {self.protocol}\n"
         return out
 
@@ -34,10 +30,8 @@ class MetadataElem:
         md_bytes = b""
         md_bytes += self.ether_type.to_bytes(2, "big")
         md_bytes += self.packet_len.to_bytes(2, "big")
-        md_bytes += self.src_port.to_bytes(2, "big")
         md_bytes += self.dst_port.to_bytes(2, "big")
         md_bytes += self.src_addr.to_bytes(4, "big")
-        md_bytes += self.dst_addr.to_bytes(4, "big")
         md_bytes += self.protocol.to_bytes(1, "big")
         return md_bytes
 
@@ -62,17 +56,14 @@ def get_md_from_pkt(pkt):
     md_elem = MetadataElem()
 
     md_elem.src_addr = int(ipaddress.ip_address(pkt.getlayer(IP).src))
-    md_elem.dst_addr = int(ipaddress.ip_address(pkt.getlayer(IP).dst))
     if pkt.haslayer(TCP):
         md_elem.protocol = socket.IPPROTO_TCP
-        md_elem.src_port = pkt.getlayer(TCP).sport
         md_elem.dst_port = pkt.getlayer(TCP).dport
     elif pkt.haslayer(UDP):
         md_elem.protocol = socket.IPPROTO_UDP
-        md_elem.src_port = pkt.getlayer(UDP).sport
         md_elem.dst_port = pkt.getlayer(UDP).dport
     else:
-        print(f"[gen_pcap_with_md_cl] Unsupported layer type: {pkt.getlayer(IP).proto}")
+        print(f"[gen_pcap_with_md_psd] Unsupported layer type: {pkt.getlayer(IP).proto}")
         sys.exit(1)
 
     md_elem.packet_len = len(pkt)
@@ -81,19 +72,19 @@ def get_md_from_pkt(pkt):
     return md_elem
 
 
-def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, overwrite=False):
-    print(f"[gen_pcap_with_md_cl] start num_cores: {num_cores}")
+def gen_pcap_with_md_psd(num_cores, dst_mac, output_path, input_file, pkt_len, overwrite=False):
+    print(f"[gen_pcap_with_md_psd] start num_cores: {num_cores}")
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    output_file = f"{output_path}/dpdk_cl_scr_{num_cores}cores.pcap"
+    output_file = f"{output_path}/dpdk_psd_scr_{num_cores}cores.pcap"
 
     if os.path.exists(output_file):
         if overwrite:  # If overwrite is enabled, delete the existing file
             os.remove(output_file)
         else:
-            print(f"[gen_pcap_with_md_cl] Output file {output_file} already exists. Exiting.")
+            print(f"[gen_pcap_with_md_psd] Output file {output_file} already exists. Exiting.")
             return
     append_flag = False
     # input_pkts = rdpcap(input_file)
@@ -108,7 +99,7 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, ov
     total_packets = int(output.strip())
     # Get the total number of packets for the progress bar
     # total_packets = sum(1 for _ in read_packets(input_file))
-    print(f"[gen_pcap_with_md_cl] Total packets in {input_file}: {total_packets}")
+    print(f"[gen_pcap_with_md_psd] Total packets in {input_file}: {total_packets}")
 
     with PcapWriter(output_file, linktype=DLT_EN10MB) as pkt_wr:
         for i, curr_pkt in read_packets(input_file):
@@ -136,11 +127,11 @@ def gen_pcap_with_md_cl(num_cores, dst_mac, output_path, input_file, pkt_len, ov
                 pkt_wr.write_header(raw_pkt)
             pkt_wr.write_packet(raw_pkt)
 
-            print(f"\r[gen_pcap_with_md_cl] Generating {output_file} ({100 * (i+1) / total_packets:3.2f} %) ...", end="")
+            print(f"\r[gen_pcap_with_md_psd] Generating {output_file} ({100 * (i+1) / total_packets:3.2f} %) ...", end="")
 
     print("")
-    print(f"[gen_pcap_with_md_cl] output pcap: {output_file}")
-    print("[gen_pcap_with_md_cl] Done!")
+    print(f"[gen_pcap_with_md_psd] output pcap: {output_file}")
+    print("[gen_pcap_with_md_psd] Done!")
 
 
 if __name__ == "__main__":
@@ -179,6 +170,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     dst_mac = args.dst_mac
 
-    gen_pcap_with_md_cl(
+    gen_pcap_with_md_psd(
         args.num_cores, dst_mac, args.output_path, args.input_file, args.pkt_len, args.overwrite
     )
