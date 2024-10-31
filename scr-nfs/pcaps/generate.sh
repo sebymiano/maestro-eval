@@ -19,6 +19,13 @@ GEN_PCAP_POL_SCRIPT=$SCRIPT_DIR/gen_pcap_with_md_pol.py
 
 POETRY_CMD="poetry run python"
 
+cleanup() {
+    echo "Caught SIGINT, cleaning up..."
+    # Kill all background jobs
+    pkill -P $$
+    exit 1
+}
+
 gen_uniform_trace() {
     local target=$1
     local pkt_size=$2
@@ -40,60 +47,37 @@ gen_uniform_trace() {
 
         if [ "$target" == "cl" ]; then
             # Run the pcap generation script for each core index
-            $POETRY_CMD $GEN_PCAP_CL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+            $POETRY_CMD $GEN_PCAP_CL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
         elif [ "$target" == "sbridge" ]; then
-            $POETRY_CMD $GEN_PCAP_SBRIDGE_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+            $POETRY_CMD $GEN_PCAP_SBRIDGE_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
         elif [ "$target" == "fw" ]; then
-            $POETRY_CMD $GEN_PCAP_FW_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+            $POETRY_CMD $GEN_PCAP_FW_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
         elif [ "$target" == "nat" ]; then
-            $POETRY_CMD $GEN_PCAP_NAT_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+            $POETRY_CMD $GEN_PCAP_NAT_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
         elif [ "$target" == "nop" ]; then
-            $POETRY_CMD $GEN_PCAP_NOP_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+            $POETRY_CMD $GEN_PCAP_NOP_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
         elif [ "$target" == "psd" ]; then
-            $POETRY_CMD $GEN_PCAP_PSD_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+            $POETRY_CMD $GEN_PCAP_PSD_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
         elif [ "$target" == "pol" ]; then
-            $POETRY_CMD $GEN_PCAP_POL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+            $POETRY_CMD $GEN_PCAP_POL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
         else
             echo "Error: Unknown target '$target'."
             return 1
         fi
     done
+
+    wait
 }
 
 gen_uniform_traces_scr() {
     local target=$1
+    
     gen_uniform_trace $target 64
     gen_uniform_trace $target 128
     gen_uniform_trace $target 256
     gen_uniform_trace $target 512
     gen_uniform_trace $target 1024
     gen_uniform_trace $target 1500
-}
-
-gen_uniform_traces_scr_parallel() {
-    local target=$1
-
-    # Define a cleanup function to be called on SIGINT
-    cleanup() {
-        echo "Caught SIGINT, cleaning up..."
-        # Kill all background jobs
-        pkill -P $$
-        exit 1
-    }
-
-    # Set up the trap to call cleanup on SIGINT
-    trap cleanup SIGINT
-
-    # Run each gen_uniform_trace in the background with process substitution
-    gen_uniform_trace $target 64 > >(sed "s/^/[64B] /") 2>&1 &
-    gen_uniform_trace $target 128 > >(sed "s/^/[128B] /") 2>&1 &
-    gen_uniform_trace $target 256 > >(sed "s/^/[256B] /") 2>&1 &
-    gen_uniform_trace $target 512 > >(sed "s/^/[512B] /") 2>&1 &
-    gen_uniform_trace $target 1024 > >(sed "s/^/[1024B] /") 2>&1 &
-    gen_uniform_trace $target 1500 > >(sed "s/^/[1500B] /") 2>&1 &
-
-    # Wait for all background processes to finish
-    wait
 }
 
 # Check if poetry is installed
@@ -111,26 +95,18 @@ fi
 # Install dependencies with poetry
 poetry install > /dev/null 2>&1
 
-# Check if there is a -p argument passed to the script
-if [ $# -eq 1 ] && [ "$1" == "-h" ]; then
-    echo "Usage: $0 [-p]"
-    echo "  -p: Generate traces in parallel"
-    exit 0
-elif [ $# -eq 1 ] && [ "$1" == "-p" ]; then
-    gen_uniform_traces_scr_parallel "cl"
-    gen_uniform_traces_scr_parallel "sbridge"
-    gen_uniform_traces_scr_parallel "fw"
-    gen_uniform_traces_scr_parallel "nat"
-    gen_uniform_traces_scr_parallel "nop"
-    gen_uniform_traces_scr_parallel "psd"
-    gen_uniform_traces_scr_parallel "pol"
-    exit 0
-else
-    gen_uniform_traces_scr "cl"
-    gen_uniform_traces_scr "sbridge"
-    gen_uniform_traces_scr "fw"
-    gen_uniform_traces_scr "nat"
-    gen_uniform_traces_scr "nop"
-    gen_uniform_traces_scr "psd"
-    gen_uniform_traces_scr "pol"
-fi
+# Set up the trap to call cleanup on SIGINT
+trap cleanup SIGINT
+
+SECONDS=0
+
+gen_uniform_traces_scr "cl"
+gen_uniform_traces_scr "sbridge"
+gen_uniform_traces_scr "fw"
+gen_uniform_traces_scr "nat"
+gen_uniform_traces_scr "nop"
+gen_uniform_traces_scr "psd"
+gen_uniform_traces_scr "pol"
+
+duration=$SECONDS
+echo "$((duration / 60)) minutes and $((duration % 60)) seconds elapsed."
