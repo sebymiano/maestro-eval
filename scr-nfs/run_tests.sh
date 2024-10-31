@@ -17,6 +17,7 @@ PCAP_FOLDER_NAT="nat_uniform_64_scr"
 PCAP_FOLDER_SBRIDGE="sbridge_uniform_64_scr"
 PCAP_FOLDER_NOP="nop_uniform_64_scr"
 PCAP_FOLDER_PSD="psd_uniform_64_scr"
+PCAP_FOLDER_POL="pol_uniform_64_scr"
 
 DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs
 
@@ -70,6 +71,9 @@ run_balanced_bench_scr() {
 		elif [ "$target" == "psd" ]; then
 			export TG_PCAPS_DIR=${TG_SCR_PCAPS_DIR}/${PCAP_FOLDER_PSD}
 			export DUT_PCAPS_DIR=${DUT_SCR_PCAPS_DIR}/${PCAP_FOLDER_PSD}
+		elif [ "$target" == "pol" ]; then
+			export TG_PCAPS_DIR=${TG_SCR_PCAPS_DIR}/${PCAP_FOLDER_POL}
+			export DUT_PCAPS_DIR=${DUT_SCR_PCAPS_DIR}/${PCAP_FOLDER_POL}
 		else
 			echo "Error: Unknown target '$target'."
 			return 1
@@ -102,6 +106,7 @@ state_compute_replication() {
 	bench_balanced_nf_scr "nat-scr" "nat" "dpdk_nat_scr_" "$CURRENT_EXPERIMENT_DIR" "nat-scr"
 	bench_balanced_nf_scr "nop-scr" "nop" "dpdk_nop_scr_" "$CURRENT_EXPERIMENT_DIR" "nop-scr"
 	bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr"
+	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr"
 }
 
 state_compute_replication
