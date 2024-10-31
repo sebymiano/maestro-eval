@@ -47,19 +47,19 @@ gen_uniform_trace() {
 
         if [ "$target" == "cl" ]; then
             # Run the pcap generation script for each core index
-            $POETRY_CMD $GEN_PCAP_CL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
+            $POETRY_CMD $GEN_PCAP_CL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[cl_${i}core] /") 2>&1 &
         elif [ "$target" == "sbridge" ]; then
-            $POETRY_CMD $GEN_PCAP_SBRIDGE_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
+            $POETRY_CMD $GEN_PCAP_SBRIDGE_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[sbridge_${i}core] /") 2>&1 &
         elif [ "$target" == "fw" ]; then
-            $POETRY_CMD $GEN_PCAP_FW_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
+            $POETRY_CMD $GEN_PCAP_FW_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[fw_${i}core] /") 2>&1 &
         elif [ "$target" == "nat" ]; then
-            $POETRY_CMD $GEN_PCAP_NAT_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
+            $POETRY_CMD $GEN_PCAP_NAT_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[nat_${i}core] /") 2>&1 &
         elif [ "$target" == "nop" ]; then
-            $POETRY_CMD $GEN_PCAP_NOP_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
+            $POETRY_CMD $GEN_PCAP_NOP_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[nop_${i}core] /") 2>&1 &
         elif [ "$target" == "psd" ]; then
-            $POETRY_CMD $GEN_PCAP_PSD_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
+            $POETRY_CMD $GEN_PCAP_PSD_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[psd_${i}core] /") 2>&1 &
         elif [ "$target" == "pol" ]; then
-            $POETRY_CMD $GEN_PCAP_POL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[${i}core] /") 2>&1 &
+            $POETRY_CMD $GEN_PCAP_POL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[pol_${i}core] /") 2>&1 &
         else
             echo "Error: Unknown target '$target'."
             return 1
