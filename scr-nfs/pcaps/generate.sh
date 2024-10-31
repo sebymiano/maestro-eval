@@ -12,6 +12,7 @@ ORIGINAL_PCAP_DIR=$SCRIPT_DIR/../../pcaps/
 GEN_PCAP_CL_SCRIPT=$SCRIPT_DIR/gen_pcap_with_md_cl.py
 GEN_PCAP_FW_SCRIPT=$SCRIPT_DIR/gen_pcap_with_md_fw.py
 GEN_PCAP_SBRIDGE_SCRIPT=$SCRIPT_DIR/gen_pcap_with_md_sbridge.py
+GEN_PCAP_NAT_SCRIPT=$SCRIPT_DIR/gen_pcap_with_md_nat.py
 
 POETRY_CMD="poetry run python"
 
@@ -41,6 +42,8 @@ gen_uniform_trace() {
             $POETRY_CMD $GEN_PCAP_SBRIDGE_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
         elif [ "$target" == "fw" ]; then
             $POETRY_CMD $GEN_PCAP_FW_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
+        elif [ "$target" == "nat" ]; then
+            $POETRY_CMD $GEN_PCAP_NAT_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size
         else
             echo "Error: Unknown target '$target'."
             return 1
@@ -75,6 +78,15 @@ gen_uniform_traces_fw() {
     gen_uniform_trace "fw" 1500
 }
 
+gen_uniform_traces_nat() {
+    gen_uniform_trace "nat" 64
+    gen_uniform_trace "nat" 128
+    gen_uniform_trace "nat" 256
+    gen_uniform_trace "nat" 512
+    gen_uniform_trace "nat" 1024
+    gen_uniform_trace "nat" 1500
+}
+
 # Check if poetry is installed
 if ! command -v poetry &> /dev/null; then
     echo "Poetry is not installed. Please install it to proceed."
@@ -92,3 +104,4 @@ poetry install
 gen_uniform_traces_sbridge
 gen_uniform_traces_cl
 gen_uniform_traces_fw
+gen_uniform_traces_nat
