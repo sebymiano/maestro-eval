@@ -77,5 +77,5 @@ fi
 
 # Install dependencies with poetry
 poetry install
-gen_uniform_traces_cl
 gen_uniform_traces_sbridge
+gen_uniform_traces_cl

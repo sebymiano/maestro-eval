@@ -185,7 +185,7 @@ kill_nf() {
 wait_for_nf() {
 	local nf_exe=$1
 
-	local max_tries=10
+	local max_tries=20
 	for (( t=0; t<$max_tries; t++ )); do
 		if is_prog_running "$DUT" "$nf_exe"; then
 			# Give time to balance LUTs (if needed)
@@ -193,7 +193,7 @@ wait_for_nf() {
 			return 0
 		fi
 
-		sleep 0.5
+		sleep 1
 	done
 	
 	echo "Max tries exceeded, NF is not running :("
