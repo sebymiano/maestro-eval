@@ -70,6 +70,32 @@ gen_uniform_traces_scr() {
     gen_uniform_trace $target 1500
 }
 
+gen_uniform_traces_scr_parallel() {
+    local target=$1
+
+    # Define a cleanup function to be called on SIGINT
+    cleanup() {
+        echo "Caught SIGINT, cleaning up..."
+        # Kill all background jobs
+        pkill -P $$
+        exit 1
+    }
+
+    # Set up the trap to call cleanup on SIGINT
+    trap cleanup SIGINT
+
+    # Run each gen_uniform_trace in the background with process substitution
+    gen_uniform_trace $target 64 > >(sed "s/^/[64B] /") 2>&1 &
+    gen_uniform_trace $target 128 > >(sed "s/^/[128B] /") 2>&1 &
+    gen_uniform_trace $target 256 > >(sed "s/^/[256B] /") 2>&1 &
+    gen_uniform_trace $target 512 > >(sed "s/^/[512B] /") 2>&1 &
+    gen_uniform_trace $target 1024 > >(sed "s/^/[1024B] /") 2>&1 &
+    gen_uniform_trace $target 1500 > >(sed "s/^/[1500B] /") 2>&1 &
+
+    # Wait for all background processes to finish
+    wait
+}
+
 # Check if poetry is installed
 if ! command -v poetry &> /dev/null; then
     echo "Poetry is not installed. Please install it to proceed."
@@ -83,11 +109,28 @@ if ! command -v capinfos &> /dev/null; then
 fi
 
 # Install dependencies with poetry
-poetry install
-gen_uniform_traces_scr "cl"
-gen_uniform_traces_scr "sbridge"
-gen_uniform_traces_scr "fw"
-gen_uniform_traces_scr "nat"
-gen_uniform_traces_scr "nop"
-gen_uniform_traces_scr "psd"
-gen_uniform_traces_scr "pol"
+poetry install > /dev/null 2>&1
+
+# Check if there is a -p argument passed to the script
+if [ $# -eq 1 ] && [ "$1" == "-h" ]; then
+    echo "Usage: $0 [-p]"
+    echo "  -p: Generate traces in parallel"
+    exit 0
+elif [ $# -eq 1 ] && [ "$1" == "-p" ]; then
+    gen_uniform_traces_scr_parallel "cl"
+    gen_uniform_traces_scr_parallel "sbridge"
+    gen_uniform_traces_scr_parallel "fw"
+    gen_uniform_traces_scr_parallel "nat"
+    gen_uniform_traces_scr_parallel "nop"
+    gen_uniform_traces_scr_parallel "psd"
+    gen_uniform_traces_scr_parallel "pol"
+    exit 0
+else
+    gen_uniform_traces_scr "cl"
+    gen_uniform_traces_scr "sbridge"
+    gen_uniform_traces_scr "fw"
+    gen_uniform_traces_scr "nat"
+    gen_uniform_traces_scr "nop"
+    gen_uniform_traces_scr "psd"
+    gen_uniform_traces_scr "pol"
+fi
