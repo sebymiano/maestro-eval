@@ -1783,25 +1783,25 @@ bool nf_init() {
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
   struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  int map_allocation_succeeded__1 = map_allocate(FlowId_eq, FlowId_hash, spread_data_among_cores(65536u), &(*map_ptr));
+  int map_allocation_succeeded__1 = map_allocate(FlowId_eq, FlowId_hash, spread_data_among_cores(1048576u), &(*map_ptr));
 
   // 114
   // 115
   // 116
   // 117
   if (map_allocation_succeeded__1) {
-    int vector_alloc_success__4 = vector_allocate(13u, spread_data_among_cores(65536u), FlowId_allocate, &(*vector_ptr));
+    int vector_alloc_success__4 = vector_allocate(13u, spread_data_among_cores(1048576u), FlowId_allocate, &(*vector_ptr));
 
     // 114
     // 115
     // 116
     if (vector_alloc_success__4) {
-      int vector_alloc_success__7 = vector_allocate(4u, spread_data_among_cores(65536u), null_init, &(*vector_1_ptr));
+      int vector_alloc_success__7 = vector_allocate(4u, spread_data_among_cores(1048576u), null_init, &(*vector_1_ptr));
 
       // 114
       // 115
       if (vector_alloc_success__7) {
-        int is_dchain_allocated__10 = dchain_allocate(spread_data_among_cores(65536u), &(*dchain_ptr));
+        int is_dchain_allocated__10 = dchain_allocate(spread_data_among_cores(1048576u), &(*dchain_ptr));
 
         // 114
         if (is_dchain_allocated__10) {
