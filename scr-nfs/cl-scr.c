@@ -2012,20 +2012,20 @@ bool nf_init() {
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
   struct Sketch** sketch_ptr = &RTE_PER_LCORE(_sketch);
-  int map_allocation_succeeded__1 = map_allocate(flow_eq, flow_hash, spread_data_among_cores(65536u), &(*map_ptr));
+  int map_allocation_succeeded__1 = map_allocate(flow_eq, flow_hash, spread_data_among_cores(1048576u), &(*map_ptr));
 
   // 113
   // 114
   // 115
   // 116
   if (map_allocation_succeeded__1) {
-    int vector_alloc_success__4 = vector_allocate(13u, spread_data_among_cores(65536u), flow_allocate, &(*vector_ptr));
+    int vector_alloc_success__4 = vector_allocate(13u, spread_data_among_cores(1048576u), flow_allocate, &(*vector_ptr));
 
     // 113
     // 114
     // 115
     if (vector_alloc_success__4) {
-      int is_dchain_allocated__7 = dchain_allocate(spread_data_among_cores(65536u), &(*dchain_ptr));
+      int is_dchain_allocated__7 = dchain_allocate(spread_data_among_cores(1048576u), &(*dchain_ptr));
 
       // 113
       // 114

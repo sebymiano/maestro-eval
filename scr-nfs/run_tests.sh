@@ -78,9 +78,10 @@ run_balanced_bench_scr() {
 			echo "Error: Unknown target '$target'."
 			return 1
 		fi
-
+		
         tg_check_file "${TG_PCAPS_DIR}/${pcap_pattern}${n_cores}cores.pcap"
 		__run_balanced_bench_with_n_cores "$nf_exe" "$pcap_file" "$n_cores" "$intermediate_results_file" "$tmp_results_file" "$exp_name"
+		dut_run "sudo killall ${nf_exe}"
 		sleep 10
 	done
 
