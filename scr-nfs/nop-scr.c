@@ -1363,7 +1363,7 @@ static void worker_main(void) {
         uint64_t offset = 0;
 
         if (md_start + md_size > (data + mbufs[n]->data_len)) {
-          printf("Error: We requested %lu metadata from a packet with len: %d", md_size, mbufs[n]->data_len);
+          printf("Error: We requested %lu metadata from a packet with len: %d\n", md_size, mbufs[n]->data_len);
           continue;
         }
 
