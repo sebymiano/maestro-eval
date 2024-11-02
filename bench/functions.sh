@@ -178,8 +178,17 @@ run_nf() {
 }
 
 kill_nf() {
-	local nf_exe=$1
-	dut_run "sudo killall -SIGKILL $nf_exe >/dev/null 2>&1 || true"
+    local nf_exe=$1
+    local max_attempts=5
+
+    # Loop to try killing the process up to 5 times with a 5-second delay between attempts
+    for (( attempt=1; attempt<=max_attempts; attempt++ )); do
+        dut_run "sudo killall -SIGKILL $nf_exe >/dev/null 2>&1 || true"
+        # Wait 5 seconds between each attempt, but skip the sleep after the last attempt
+        if (( attempt < max_attempts )); then
+            sleep 5
+        fi
+    done
 }
 
 wait_for_nf() {
