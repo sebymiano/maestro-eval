@@ -12,15 +12,23 @@ import tqdm
 class MetadataElem:
     def __init__(self, protocol=0):
         self.protocol = protocol
+        self.timestamp = 0
+        
 
     def __str__(self):
         # Convert the MAC address from integer to a human-readable MAC format
         proto = self.protocol
-        return f"Protocol: {proto}\n"
+        out = ""
+        out += f"Protocol: {proto}\n"
+        out += f"Timestamp: {self.timestamp}\n"
+        return out
 
     def __bytes__(self):
+        md_bytes = b""
         # Convert MAC address to bytes (6 bytes for MAC address in big-endian)
-        return self.protocol.to_bytes(1, "big")
+        md_bytes += self.protocol.to_bytes(1, "big")
+        md_bytes += int(self.timestamp).to_bytes(8, 'big')
+        return md_bytes
 
 
 # Generator function to read and yield packets one by one
@@ -49,6 +57,8 @@ def get_md_from_pkt(pkt):
     else:
         print(f"[gen_pcap_with_md_nop] Unsupported layer type: {pkt.getlayer(IP).proto}")
         sys.exit(1)
+
+    md_elem.timestamp = pkt.time
 
     return md_elem
 

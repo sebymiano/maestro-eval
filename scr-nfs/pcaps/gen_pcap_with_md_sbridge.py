@@ -12,15 +12,23 @@ import tqdm
 class MetadataElem:
     def __init__(self, mac_dst_addr=0):
         self.mac_dst_addr = mac_dst_addr  # Stores destination MAC address
+        self.timestamp = 0
 
     def __str__(self):
+        out = ""
+        mac_str = ""
         # Convert the MAC address from integer to a human-readable MAC format
-        mac_str = ':'.join(f"{(self.mac_dst_addr >> (i * 8)) & 0xFF:02x}" for i in reversed(range(6)))
-        return f"Destination MAC Address: {mac_str}\n"
+        mac_str += ':'.join(f"{(self.mac_dst_addr >> (i * 8)) & 0xFF:02x}" for i in reversed(range(6)))
+        out += f"Destination MAC Address: {mac_str}\n"
+        out += f"Timestamp: {self.timestamp}\n"
+        return out
 
     def __bytes__(self):
+        md_bytes = b""
         # Convert MAC address to bytes (6 bytes for MAC address in big-endian)
-        return self.mac_dst_addr.to_bytes(6, "big")
+        md_bytes += self.mac_dst_addr.to_bytes(6, "big")
+        md_bytes += int(self.timestamp).to_bytes(8, 'big')
+        return md_bytes
 
 
 # Generator function to read and yield packets one by one
@@ -45,6 +53,8 @@ def get_md_from_pkt(pkt):
     # Extract and store only the destination MAC address from the Ethernet layer
     if pkt.haslayer(Ether):
         md_elem.mac_dst_addr = int(pkt.getlayer(Ether).dst.replace(":", ""), 16)
+
+    md_elem.timestamp = pkt.time
 
     return md_elem
 

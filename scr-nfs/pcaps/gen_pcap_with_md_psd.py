@@ -16,6 +16,7 @@ class MetadataElem:
         self.dst_port = 0
         self.src_addr = 0
         self.protocol = 0
+        self.timestamp = 0
 
     def __str__(self):
         out = ""
@@ -24,6 +25,7 @@ class MetadataElem:
         out += f"Dest port: {self.dst_port}\n"
         out += f"Source IP: {ipaddress.IPv4Address(self.src_addr)}\n"
         out += f"Protocol: {self.protocol}\n"
+        out += f"Timestamp: {self.timestamp}\n"
         return out
 
     def __bytes__(self):
@@ -33,6 +35,7 @@ class MetadataElem:
         md_bytes += self.dst_port.to_bytes(2, "big")
         md_bytes += self.src_addr.to_bytes(4, "big")
         md_bytes += self.protocol.to_bytes(1, "big")
+        md_bytes += int(self.timestamp).to_bytes(8, 'big')
         return md_bytes
 
 
@@ -66,6 +69,7 @@ def get_md_from_pkt(pkt):
         print(f"[gen_pcap_with_md_psd] Unsupported layer type: {pkt.getlayer(IP).proto}")
         sys.exit(1)
 
+    md_elem.timestamp = pkt.time
     md_elem.packet_len = len(pkt)
     md_elem.ether_type = pkt.getlayer(Ether).type
     # print(md_elem)
