@@ -1394,6 +1394,7 @@ static void worker_main(void) {
           // print_md(mbufs[n]->port, lcore_id, md);
 
           nf_process_scr(mbufs[n]->port, md, md->timestamp);
+          VIGOR_NOW = md->timestamp + 10;
         }
 
         offset = dummy_header_size + md_size;

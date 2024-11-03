@@ -1371,6 +1371,7 @@ static void worker_main(void) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
 
           nf_process_scr(mbufs[n]->port, md, md->timestamp);
+          VIGOR_NOW = md->timestamp + 10;
         }
 
         offset = dummy_header_size + md_size;
