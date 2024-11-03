@@ -85,6 +85,7 @@ struct metadata_elem {
   uint32_t src_addr;
   uint32_t dst_addr;
   uint8_t protocol;
+  uint64_t timestamp;
 } __attribute__((packed));
 
 /**********************************************
@@ -1106,6 +1107,10 @@ void set_reta(uint16_t device) {
   printf("Set RETA for device %u\n", device);
 }
 
+/* The problem I found here is that with SCR we have more conflicts, since
+ * every flow can endup in the same bucket. This is not a problem for the
+ * RSS, since we have a hash function that spreads the flows among the buckets.
+ */
 uint32_t spread_data_among_cores(uint32_t capacity) {
   // capacity /= rte_lcore_count();
 
@@ -1397,7 +1402,7 @@ static void worker_main(void) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
           // print_md(mbufs[n]->port, lcore_id, md);
 
-          nf_process_scr(mbufs[n]->port, md, VIGOR_NOW);
+          nf_process_scr(mbufs[n]->port, md, md->timestamp);
         }
 
         offset = dummy_header_size + md_size;
@@ -1410,8 +1415,14 @@ static void worker_main(void) {
         } else if (dst_device == FLOOD_FRAME) {
           flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
         } else {
-          // TODO: We might need remove the additional metadata 
-          // we added before sending the packet back
+          // offset = dummy_header_size + md_size;
+          // Remove the metadata section from the packet
+          // if (unlikely(rte_pktmbuf_adj(mbufs[n], offset) == NULL)) {
+          //   // If adjusting the mbuf fails, free the packet and continue
+          //   printf("Error: Unable to adjust mbuf to remove metadata\n");
+          //   rte_pktmbuf_free(mbufs[n]);
+          //   continue;
+          // }
           mbufs_to_send[tx_count] = mbufs[n];
           tx_count++;
         }

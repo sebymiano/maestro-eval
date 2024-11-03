@@ -1383,7 +1383,7 @@ static void worker_main(void) {
         } else if (dst_device == FLOOD_FRAME) {
           flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
         } else {
-          offset = dummy_header_size + md_size;
+          // offset = dummy_header_size + md_size;
           // Remove the metadata section from the packet
           // if (unlikely(rte_pktmbuf_adj(mbufs[n], offset) == NULL)) {
           //   // If adjusting the mbuf fails, free the packet and continue

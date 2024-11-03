@@ -81,6 +81,7 @@ struct metadata_elem {
   uint16_t ether_type;
   uint16_t packet_len;
   uint32_t dst_addr;
+  uint64_t timestamp;
 } __attribute__((packed));
 
 /**********************************************
@@ -1389,7 +1390,7 @@ static void worker_main(void) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
           // print_md(mbufs[n]->port, lcore_id, md);
 
-          nf_process_scr(mbufs[n]->port, md, VIGOR_NOW);
+          nf_process_scr(mbufs[n]->port, md, md->timestamp);
         }
 
         offset = dummy_header_size + md_size;
@@ -1402,8 +1403,15 @@ static void worker_main(void) {
         } else if (dst_device == FLOOD_FRAME) {
           flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
         } else {
-          // TODO: We might need remove the additional metadata 
-          // we added before sending the packet back
+          // offset = dummy_header_size + md_size;
+          // Remove the metadata section from the packet
+          // if (unlikely(rte_pktmbuf_adj(mbufs[n], offset) == NULL)) {
+          //   // If adjusting the mbuf fails, free the packet and continue
+          //   printf("Error: Unable to adjust mbuf to remove metadata\n");
+          //   rte_pktmbuf_free(mbufs[n]);
+          //   continue;
+          // }
+
           mbufs_to_send[tx_count] = mbufs[n];
           tx_count++;
         }
