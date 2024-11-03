@@ -10,8 +10,8 @@ import tqdm
 
 
 class MetadataElem:
-    def __init__(self, protocol=0):
-        self.protocol = protocol
+    def __init__(self):
+        # self.protocol = protocol
         self.timestamp = 0
         
 
@@ -19,14 +19,14 @@ class MetadataElem:
         # Convert the MAC address from integer to a human-readable MAC format
         proto = self.protocol
         out = ""
-        out += f"Protocol: {proto}\n"
+        # out += f"Protocol: {proto}\n"
         out += f"Timestamp: {self.timestamp}\n"
         return out
 
     def __bytes__(self):
         md_bytes = b""
         # Convert MAC address to bytes (6 bytes for MAC address in big-endian)
-        md_bytes += self.protocol.to_bytes(1, "big")
+        # md_bytes += self.protocol.to_bytes(1, "big")
         md_bytes += int(self.timestamp).to_bytes(8, 'big')
         return md_bytes
 
@@ -50,15 +50,15 @@ def modify_pkt_size(pkt, pkt_len):
 def get_md_from_pkt(pkt):
     md_elem = MetadataElem()
 
-    if pkt.haslayer(TCP):
-        md_elem.protocol = socket.IPPROTO_TCP
-    elif pkt.haslayer(UDP):
-        md_elem.protocol = socket.IPPROTO_UDP
-    else:
+    if not pkt.haslayer(TCP) and not pkt.haslayer(UDP):
         print(f"[gen_pcap_with_md_nop] Unsupported layer type: {pkt.getlayer(IP).proto}")
         sys.exit(1)
 
-    md_elem.timestamp = pkt.time
+    if not hasattr(get_md_from_pkt, "static_time"):
+        get_md_from_pkt.static_time = 100000000
+    get_md_from_pkt.static_time += 100
+
+    md_elem.timestamp = get_md_from_pkt.static_time
 
     return md_elem
 
