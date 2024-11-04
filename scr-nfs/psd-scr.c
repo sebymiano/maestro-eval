@@ -81,9 +81,9 @@ struct metadata_elem {
   uint16_t ether_type;
   uint16_t packet_len;
   uint16_t dst_port;
+  uint64_t timestamp;
   uint32_t src_addr;
   uint8_t protocol;
-  uint64_t timestamp;
 } __attribute__((packed));
 
 /**********************************************

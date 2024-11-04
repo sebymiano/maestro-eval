@@ -82,10 +82,10 @@ struct metadata_elem {
   uint16_t packet_len;
   uint16_t src_port;
   uint16_t dst_port;
-  uint32_t src_addr;
-  uint32_t dst_addr;
   uint8_t protocol;
   uint64_t timestamp;
+  uint32_t src_addr;
+  uint32_t dst_addr;
 } __attribute__((packed));
 
 /**********************************************

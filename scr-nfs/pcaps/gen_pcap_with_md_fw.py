@@ -13,10 +13,10 @@ class MetadataElem:
         self.packet_len = 0
         self.src_port = 0
         self.dst_port = 0
-        self.src_addr = 0
-        self.dst_addr = 0
         self.protocol = 0
         self.timestamp = 0
+        self.src_addr = 0
+        self.dst_addr = 0
 
     def __str__(self):
         out = ""
