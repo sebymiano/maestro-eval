@@ -2054,7 +2054,7 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
   struct Map** map_ptr = &RTE_PER_LCORE(_map);
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  int number_of_freed_flows__24 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
+  // int number_of_freed_flows__24 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
 
   // 125
   // 126
@@ -2153,7 +2153,7 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
           int out_of_space__71 = !dchain_allocate_new_index((*dchain_ptr), &new_index__71, now);
 
           // 128
-          if (false == ((out_of_space__71) & (0u == number_of_freed_flows__24))) {
+          if (false == ((out_of_space__71))) {
             uint8_t* vector_value_out = 0u;
             vector_borrow((*vector_ptr), new_index__71, (void**)(&vector_value_out));
             vector_value_out[0u] = state_elem->src_port & 0xff;
@@ -2206,7 +2206,7 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
 
         // 130
         else {
-          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
           /* No need to do that, we are computing for SCR here */
           
           // int checksum__95 = rte_ipv4_udptcp_cksum(ipv4_header_1, tcpudp_header_1);
@@ -2253,7 +2253,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
   struct Map** map_ptr = &RTE_PER_LCORE(_map);
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  int number_of_freed_flows__24 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
+  // int number_of_freed_flows__24 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
 
   // 125
@@ -2355,7 +2355,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
           int out_of_space__71 = !dchain_allocate_new_index((*dchain_ptr), &new_index__71, now);
 
           // 128
-          if (false == ((out_of_space__71) & (0u == number_of_freed_flows__24))) {
+          if (false == ((out_of_space__71))) {
             uint8_t* vector_value_out = 0u;
             vector_borrow((*vector_ptr), new_index__71, (void**)(&vector_value_out));
             vector_value_out[0u] = tcpudp_header_1->src_port & 0xff;
@@ -2406,7 +2406,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
 
         // 130
         else {
-          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
           int checksum__95 = rte_ipv4_udptcp_cksum(ipv4_header_1, tcpudp_header_1);
           tcpudp_header_1->src_port = map_value_out & 0xffff;
           ipv4_header_1->hdr_checksum = checksum__95 & 0xffff;
