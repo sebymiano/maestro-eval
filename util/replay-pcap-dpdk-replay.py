@@ -67,6 +67,32 @@ send_port_pci: {{sendport}}
 loglevel: TRACE
 """
 
+DPDK_BURST_REPLAY_CONFIG_TEMPLATE_SINGLE = \
+"""
+---
+traces: 
+  - path: "{{pcap}}"
+    tx_queues: 8
+numacore: {{numacore}}
+nbruns: -1
+timeout: {{duration}}
+max_mpps: -1
+max_mbps: {{rate}}
+write_csv: True
+wait_enter: False
+slow_mode: False
+convert_to_json: True
+nb_rx_queues: 16
+nb_rx_cores: 4
+stats:
+  - pci_id: {{sendport}}
+    file_name: "{{results_snd_port}}"
+  - pci_id: {{recvport}}
+    file_name: "{{results_rcv_port}}"
+send_port_pci: {{sendport}}
+loglevel: TRACE
+"""
+
 def kill_pktgen(sig, frame):
 	print("[*] Killing DPDK burst replay instances", flush=True)
 	os.system("sudo killall dpdk-replay")
