@@ -49,7 +49,7 @@ gen_uniform_trace() {
             # Run the pcap generation script for each core index
             $POETRY_CMD $GEN_PCAP_CL_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[cl_${i}core] /") 2>&1 &
         elif [ "$target" == "sbridge" ]; then
-            $POETRY_CMD $GEN_PCAP_SBRIDGE_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[sbridge_${i}core] /") 2>&1 &
+            $POETRY_CMD $GEN_PCAP_SBRIDGE_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size> >(sed "s/^/[sbridge_${i}core] /") 2>&1 &
         elif [ "$target" == "fw" ]; then
             $POETRY_CMD $GEN_PCAP_FW_SCRIPT --input "$pcap" --output "${SCRIPT_DIR}/${target}_uniform_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[fw_${i}core] /") 2>&1 &
         elif [ "$target" == "nat" ]; then
@@ -73,11 +73,11 @@ gen_uniform_traces_scr() {
     local target=$1
     
     gen_uniform_trace $target 64
-    gen_uniform_trace $target 128
-    gen_uniform_trace $target 256
-    gen_uniform_trace $target 512
-    gen_uniform_trace $target 1024
-    gen_uniform_trace $target 1500
+    # gen_uniform_trace $target 128
+    # gen_uniform_trace $target 256
+    # gen_uniform_trace $target 512
+    # gen_uniform_trace $target 1024
+    # gen_uniform_trace $target 1500
 }
 
 # Check if poetry is installed
@@ -100,11 +100,11 @@ trap cleanup SIGINT
 
 SECONDS=0
 
+gen_uniform_traces_scr "nop"
 gen_uniform_traces_scr "cl"
 gen_uniform_traces_scr "sbridge"
 gen_uniform_traces_scr "fw"
 gen_uniform_traces_scr "nat"
-gen_uniform_traces_scr "nop"
 gen_uniform_traces_scr "psd"
 gen_uniform_traces_scr "pol"
 

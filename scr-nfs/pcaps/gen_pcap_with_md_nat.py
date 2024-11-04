@@ -6,8 +6,6 @@ from scapy.layers.inet import IP, TCP, UDP
 from scapy.utils import wrpcap
 import argparse
 import os
-import tqdm
-
 
 class MetadataElem:
     def __init__(self):
@@ -26,8 +24,8 @@ class MetadataElem:
         out += f"Packet len: {self.packet_len}\n"
         out += f"Source port: {self.src_port}\n"
         out += f"Dest port: {self.dst_port}\n"
-        out += f"Source IP: {ipaddress.IPv4Address(self.src_ip)}\n"
-        out += f"Dest IP: {ipaddress.IPv4Address(self.dst_ip)}\n"
+        out += f"Source IP: {ipaddress.IPv4Address(self.src_addr)}\n"
+        out += f"Dest IP: {ipaddress.IPv4Address(self.dst_addr)}\n"
         out += f"Protocol: {self.protocol}\n"
         out += f"Timestamp: {self.timestamp}\n"
         return out
@@ -38,10 +36,10 @@ class MetadataElem:
         md_bytes += self.packet_len.to_bytes(2, "big")
         md_bytes += self.src_port.to_bytes(2, "big")
         md_bytes += self.dst_port.to_bytes(2, "big")
-        md_bytes += self.src_addr.to_bytes(4, "big")
-        md_bytes += self.dst_addr.to_bytes(4, "big")
         md_bytes += self.protocol.to_bytes(1, "big")
         md_bytes += int(self.timestamp).to_bytes(8, 'big')
+        md_bytes += self.src_addr.to_bytes(4, "big")
+        md_bytes += self.dst_addr.to_bytes(4, "big")
         return md_bytes
 
 
@@ -78,14 +76,19 @@ def get_md_from_pkt(pkt):
         print(f"[gen_pcap_with_md_nat] Unsupported layer type: {pkt.getlayer(IP).proto}")
         sys.exit(1)
 
-    md_elem.timestamp = pkt.time
+    if not hasattr(get_md_from_pkt, "static_time"):
+        get_md_from_pkt.static_time = 100000000
+    get_md_from_pkt.static_time += 100
+
+    md_elem.timestamp = get_md_from_pkt.static_time
+
     md_elem.packet_len = len(pkt)
     md_elem.ether_type = pkt.getlayer(Ether).type
     # print(md_elem)
     return md_elem
 
 
-def gen_pcap_with_md_nat(num_cores, dst_mac, output_path, input_file, pkt_len, overwrite=False):
+def gen_pcap_with_md_nat(num_cores, dst_mac, output_path, input_file, pkt_len, overwrite=False, quiet=False):
     print(f"[gen_pcap_with_md_nat] start num_cores: {num_cores}")
 
     if not os.path.exists(output_path):
@@ -140,7 +143,8 @@ def gen_pcap_with_md_nat(num_cores, dst_mac, output_path, input_file, pkt_len, o
                 pkt_wr.write_header(raw_pkt)
             pkt_wr.write_packet(raw_pkt)
 
-            print(f"\r[gen_pcap_with_md_nat] Generating {output_file} ({100 * (i+1) / total_packets:3.2f} %) ...", end="")
+            if not quiet:
+                print(f"\r[gen_pcap_with_md_nat] Generating {output_file} ({100 * (i+1) / total_packets:3.2f} %) ...", end="")
 
     print("")
     print(f"[gen_pcap_with_md_nat] output pcap: {output_file}")
@@ -180,9 +184,17 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        dest="quiet",
+        help="Do not print progress bar",
+        action="store_true",
+    )
+
     args = parser.parse_args()
     dst_mac = args.dst_mac
 
     gen_pcap_with_md_nat(
-        args.num_cores, dst_mac, args.output_path, args.input_file, args.pkt_len, args.overwrite
+        args.num_cores, dst_mac, args.output_path, args.input_file, args.pkt_len, args.overwrite, args.quiet
     )
