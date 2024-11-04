@@ -48,6 +48,19 @@ gen_uniform_trace() {
     $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
 }
 
+gen_single_flow_trace() {
+    pkt_size=$1
+    num_flows=1
+
+    pcap=$SCRIPT_DIR/single_${pkt_size}B.pcap
+
+    if [ -f $pcap ]; then
+        return 0
+    fi
+    
+    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
+}
+
 gen_uniform_internet_trace() {
     pcap=$SCRIPT_DIR/uniform_internet.pcap
     num_flows=40000
@@ -93,6 +106,15 @@ gen_uniform_traces() {
     gen_uniform_trace 1500
 }
 
+gen_single_flow_traces() {
+    gen_single_flow_trace 64
+    gen_single_flow_trace 128
+    gen_single_flow_trace 256
+    gen_single_flow_trace 512
+    gen_single_flow_trace 1024
+    gen_single_flow_trace 1500
+}
+
 get_churn_trace() {
     churn=$1      # fpm
     rate=100      # Gbps
@@ -123,6 +145,7 @@ get_churn_traces() {
 
 get_univ_trace
 gen_uniform_traces
+gen_single_flow_traces
 gen_uniform_internet_trace
 gen_uniform_vpp_trace
 get_zipf_trace
