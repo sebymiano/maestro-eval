@@ -2070,7 +2070,7 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
   struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
+  // int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
 
   // 120
   // 121
@@ -2116,7 +2116,7 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
           uint8_t* vector_value_out = 0u;
           vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
           vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
           /* No need to modify the MAC address in the SCR calculation */
           // ether_header_1->d_addr.addr_bytes[0ul] = 1u;
           // ether_header_1->d_addr.addr_bytes[1ul] = 35u;
@@ -2163,7 +2163,7 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
           int out_of_space__64 = !dchain_allocate_new_index((*dchain_ptr), &new_index__64, now);
 
           // 122
-          if (false == ((out_of_space__64) & (0u == number_of_freed_flows__27))) {
+          if (false == ((out_of_space__64))) {
             uint8_t* vector_value_out = 0u;
             vector_borrow((*vector_ptr), new_index__64, (void**)(&vector_value_out));
             vector_value_out[0u] = state_elem->src_port & 0xff;
@@ -2229,7 +2229,7 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
 
         // 124
         else {
-          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
           // ether_header_1->d_addr.addr_bytes[0] = 0xb8;
           // ether_header_1->d_addr.addr_bytes[1] = 0x3f;
           // ether_header_1->d_addr.addr_bytes[2] = 0xd2;
@@ -2271,7 +2271,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
   struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
+  // int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
 
   // 120
@@ -2322,7 +2322,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
           uint8_t* vector_value_out = 0u;
           vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
           vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
           ether_header_1->d_addr.addr_bytes[0] = 0xb8;
           ether_header_1->d_addr.addr_bytes[1] = 0x3f;
           ether_header_1->d_addr.addr_bytes[2] = 0xd2;
@@ -2370,7 +2370,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
           int out_of_space__64 = !dchain_allocate_new_index((*dchain_ptr), &new_index__64, now);
 
           // 122
-          if (false == ((out_of_space__64) & (0u == number_of_freed_flows__27))) {
+          if (false == ((out_of_space__64))) {
             uint8_t* vector_value_out = 0u;
             vector_borrow((*vector_ptr), new_index__64, (void**)(&vector_value_out));
             vector_value_out[0u] = tcpudp_header_1->src_port & 0xff;
@@ -2435,7 +2435,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
 
         // 124
         else {
-          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
           ether_header_1->d_addr.addr_bytes[0] = 0xb8;
           ether_header_1->d_addr.addr_bytes[1] = 0x3f;
           ether_header_1->d_addr.addr_bytes[2] = 0xd2;
