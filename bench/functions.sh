@@ -357,12 +357,12 @@ __run_bench_with_n_cores() {
 
 	local lcores=$(python3 -c "print(','.join('$DUT_CORES'.split(',')[:$n_cores]))")
 
-	echo "[$exp_name] Running NF with $n_cores cores ($lcores)"
-	run_nf "$nf_exe" "$lcores"
-
-	wait_for_nf "$nf_exe"
-
 	for ((i=1;i<=$ITERATIONS;i++)); do
+		echo "[$exp_name] Running NF with $n_cores cores ($lcores)"
+		run_nf "$nf_exe" "$lcores"
+
+		wait_for_nf "$nf_exe"
+
 		echo "[$exp_name]   * Running benchmark {$i/$ITERATIONS, pcap=$pcap}"
 		log "NF: $exp_name, cores: $lcores, pcap: $pcap, it: $i/$ITERATIONS"
 
@@ -376,10 +376,10 @@ __run_bench_with_n_cores() {
 		echo -e "$i,$n_cores,$gbps,$mpps,$loss" >> $tmp_results_file
 
 		rm -f $intermediate_results_file
-	done
 
-	echo "[$exp_name]   * Killing NF"
-	kill_nf "$nf_exe"
+		echo "[$exp_name]   * Killing NF"
+		kill_nf "$nf_exe"
+	done
 }
 
 run_bench() {
