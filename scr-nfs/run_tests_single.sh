@@ -11,13 +11,13 @@ source $FUNCTIONS_FILE
 DUT_SCR_PCAPS_DIR=$DUT_EVAL_DIR/scr-nfs/pcaps
 TG_SCR_PCAPS_DIR=$TG_EVAL_DIR/scr-nfs/pcaps
 
-PCAP_FOLDER_CL="cl_uniform_64_scr"
-PCAP_FOLDER_FW="fw_uniform_64_scr"
-PCAP_FOLDER_NAT="nat_uniform_64_scr"
-PCAP_FOLDER_SBRIDGE="sbridge_uniform_64_scr"
-PCAP_FOLDER_NOP="nop_uniform_64_scr"
-PCAP_FOLDER_PSD="psd_uniform_64_scr"
-PCAP_FOLDER_POL="pol_uniform_64_scr"
+PCAP_FOLDER_CL="cl_single_64_scr"
+PCAP_FOLDER_FW="fw_single_64_scr"
+PCAP_FOLDER_NAT="nat_single_64_scr"
+PCAP_FOLDER_SBRIDGE="sbridge_single_64_scr"
+PCAP_FOLDER_NOP="nop_single_64_scr"
+PCAP_FOLDER_PSD="psd_single_64_scr"
+PCAP_FOLDER_POL="pol_single_64_scr"
 
 DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs
 
@@ -98,13 +98,13 @@ bench_balanced_nf_scr() {
 }
 
 state_compute_replication() {
-	bench_balanced_nf_scr "sbridge-scr" "sbridge" "dpdk_sbridge_scr_" "$CURRENT_EXPERIMENT_DIR" "sbridge-scr"
-    bench_balanced_nf_scr "cl-scr" "cl" "dpdk_cl_scr_" "$CURRENT_EXPERIMENT_DIR" "cl-scr"
-	bench_balanced_nf_scr "fw-scr" "fw" "dpdk_fw_scr_" "$CURRENT_EXPERIMENT_DIR" "fw-scr"
-	bench_balanced_nf_scr "nat-scr" "nat" "dpdk_nat_scr_" "$CURRENT_EXPERIMENT_DIR" "nat-scr"
-	bench_balanced_nf_scr "nop-scr" "nop" "dpdk_nop_scr_" "$CURRENT_EXPERIMENT_DIR" "nop-scr"
-	bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr"
-	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr"
+	bench_balanced_nf_scr "sbridge-scr" "sbridge" "dpdk_sbridge_scr_" "$CURRENT_EXPERIMENT_DIR" "sbridge-scr-single"
+    bench_balanced_nf_scr "cl-scr" "cl" "dpdk_cl_scr_" "$CURRENT_EXPERIMENT_DIR" "cl-scr-single"
+	bench_balanced_nf_scr "fw-scr" "fw" "dpdk_fw_scr_" "$CURRENT_EXPERIMENT_DIR" "fw-scr-single"
+	bench_balanced_nf_scr "nat-scr" "nat" "dpdk_nat_scr_" "$CURRENT_EXPERIMENT_DIR" "nat-scr-single"
+	bench_balanced_nf_scr "nop-scr" "nop" "dpdk_nop_scr_" "$CURRENT_EXPERIMENT_DIR" "nop-scr-single"
+	bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr-single"
+	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr-single"
 }
 
 state_compute_replication
