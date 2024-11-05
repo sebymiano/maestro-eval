@@ -14,6 +14,7 @@ IMC10_CHOSEN_TRACE=univ2_pt1
 IMC10_TRACE=imc10.pcap
 
 UNIFORM_SCRIPT=$SCRIPT_DIR/uniform.py
+SINGLE_SCRIPT=$SCRIPT_DIR/single.py
 NORMALIZE_PACKET_SIZES_SCRIPT=$SCRIPT_DIR/normalize_packet_sizes.py
 CHURN_SCRIPT=$SCRIPT_DIR/churn.py
 
@@ -50,6 +51,7 @@ gen_uniform_trace() {
 
 gen_single_flow_trace() {
     pkt_size=$1
+    packets_per_flow=1000
     num_flows=1
 
     pcap=$SCRIPT_DIR/single_${pkt_size}B.pcap
@@ -58,7 +60,7 @@ gen_single_flow_trace() {
         return 0
     fi
     
-    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
+    $UNIFORM_SCRIPT --output $pcap --flows $num_flows --size $pkt_size --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC --packets-per-flow $packets_per_flow
 }
 
 gen_uniform_internet_trace() {
