@@ -18,7 +18,6 @@
 #include <netinet/udp.h>
 #include <pcap.h>
 
-#include <rte_atomic.h>
 #include <rte_build_config.h>
 #include <rte_byteorder.h>
 #include <rte_common.h>
@@ -37,14 +36,6 @@
  *
  **********************************************/
 
-RTE_DEFINE_PER_LCORE(bool, write_attempt);
-RTE_DEFINE_PER_LCORE(bool, write_state);
-
-struct tcpudp_hdr {
-  uint16_t src_port;
-  uint16_t dst_port;
-} __attribute__((__packed__));
-
 #define AND &&
 #define vigor_time_t int64_t
 
@@ -54,10 +45,20 @@ vigor_time_t current_time(void) {
   return tp.tv_sec * 1000000000ul + tp.tv_nsec;
 }
 
-#define CAPACITY_UPPER_LIMIT 140000
-
 typedef unsigned map_key_hash(void *k1);
 typedef bool map_keys_equality(void *k1, void *k2);
+
+struct Map {
+  int *busybits;
+  void **keyps;
+  unsigned *khs;
+  int *chns;
+  int *vals;
+  unsigned capacity;
+  unsigned size;
+  map_keys_equality *keys_eq;
+  map_key_hash *khash;
+};
 
 static unsigned loop(unsigned k, unsigned capacity) {
   return k & (capacity - 1);
@@ -124,8 +125,8 @@ static unsigned find_empty(int *busybits, int *chns, unsigned start,
     if (0 == bb) {
       return index;
     }
-    int chn = chns[index];
 
+    int chn = chns[index];
     chns[index] = chn + 1;
   }
 
@@ -186,176 +187,122 @@ unsigned map_impl_size(int *busybits, unsigned capacity) {
       ++s;
     }
   }
-
   return s;
 }
 
-struct MapLocks {
-  int *busybits;
-  void **keyps;
-  unsigned *khs;
-  int *chns;
-  int *vals;
-  unsigned capacity;
-  unsigned size;
-  map_keys_equality *keys_eq;
-  map_key_hash *khash;
-};
-
-int map_locks_allocate(map_keys_equality *keq, map_key_hash *khash,
-                       unsigned capacity, struct MapLocks **map_locks_out) {
-#ifdef CAPACITY_POW2
-  if (capacity == 0 || (capacity & (capacity - 1)) != 0) {
+int map_allocate(map_keys_equality *keq, map_key_hash *khash, unsigned capacity,
+                 struct Map **map_out) {
+  struct Map *old_map_val = *map_out;
+  struct Map *map_alloc =
+      (struct Map *)rte_malloc(NULL, sizeof(struct Map), 64);
+  if (map_alloc == NULL)
     return 0;
-  }
-#else
-#endif
-  struct MapLocks *old_map_locks_val = *map_locks_out;
-  struct MapLocks *map_locks_alloc =
-      (struct MapLocks *)rte_malloc(NULL, sizeof(struct MapLocks), 64);
-  if (map_locks_alloc == NULL)
-    return 0;
-  *map_locks_out = (struct MapLocks *)map_locks_alloc;
+  *map_out = (struct Map *)map_alloc;
   int *bbs_alloc = (int *)rte_malloc(NULL, sizeof(int) * (int)capacity, 64);
   if (bbs_alloc == NULL) {
-    rte_free(map_locks_alloc);
-    *map_locks_out = old_map_locks_val;
+    rte_free(map_alloc);
+    *map_out = old_map_val;
     return 0;
   }
-  (*map_locks_out)->busybits = bbs_alloc;
+  (*map_out)->busybits = bbs_alloc;
   void **keyps_alloc =
       (void **)rte_malloc(NULL, sizeof(void *) * (int)capacity, 64);
   if (keyps_alloc == NULL) {
     rte_free(bbs_alloc);
-    rte_free(map_locks_alloc);
-    *map_locks_out = old_map_locks_val;
+    rte_free(map_alloc);
+    *map_out = old_map_val;
     return 0;
   }
-  (*map_locks_out)->keyps = keyps_alloc;
+  (*map_out)->keyps = keyps_alloc;
   unsigned *khs_alloc =
       (unsigned *)rte_malloc(NULL, sizeof(unsigned) * (int)capacity, 64);
   if (khs_alloc == NULL) {
     rte_free(keyps_alloc);
     rte_free(bbs_alloc);
-    rte_free(map_locks_alloc);
-    *map_locks_out = old_map_locks_val;
+    rte_free(map_alloc);
+    *map_out = old_map_val;
     return 0;
   }
-  (*map_locks_out)->khs = khs_alloc;
+  (*map_out)->khs = khs_alloc;
   int *chns_alloc = (int *)rte_malloc(NULL, sizeof(int) * (int)capacity, 64);
   if (chns_alloc == NULL) {
     rte_free(khs_alloc);
     rte_free(keyps_alloc);
     rte_free(bbs_alloc);
-    rte_free(map_locks_alloc);
-    *map_locks_out = old_map_locks_val;
+    rte_free(map_alloc);
+    *map_out = old_map_val;
     return 0;
   }
-  (*map_locks_out)->chns = chns_alloc;
+  (*map_out)->chns = chns_alloc;
   int *vals_alloc = (int *)rte_malloc(NULL, sizeof(int) * (int)capacity, 64);
+
   if (vals_alloc == NULL) {
     rte_free(chns_alloc);
     rte_free(khs_alloc);
     rte_free(keyps_alloc);
     rte_free(bbs_alloc);
-    rte_free(map_locks_alloc);
-    *map_locks_out = old_map_locks_val;
+    rte_free(map_alloc);
+    *map_out = old_map_val;
     return 0;
   }
-  (*map_locks_out)->vals = vals_alloc;
-  (*map_locks_out)->capacity = capacity;
-  (*map_locks_out)->size = 0;
-  (*map_locks_out)->keys_eq = keq;
-  (*map_locks_out)->khash = khash;
-  map_impl_init((*map_locks_out)->busybits, keq, (*map_locks_out)->keyps,
-                (*map_locks_out)->khs, (*map_locks_out)->chns,
-                (*map_locks_out)->vals, capacity);
+
+  (*map_out)->vals = vals_alloc;
+  (*map_out)->capacity = capacity;
+  (*map_out)->size = 0;
+  (*map_out)->keys_eq = keq;
+  (*map_out)->khash = khash;
+
+  map_impl_init((*map_out)->busybits, keq, (*map_out)->keyps, (*map_out)->khs,
+                (*map_out)->chns, (*map_out)->vals, capacity);
   return 1;
 }
-int map_locks_get(struct MapLocks *map, void *key, int *value_out) {
+
+int map_get(struct Map *map, void *key, int *value_out) {
   map_key_hash *khash = map->khash;
   unsigned hash = khash(key);
   return map_impl_get(map->busybits, map->keyps, map->khs, map->chns, map->vals,
                       key, map->keys_eq, hash, value_out, map->capacity);
 }
-void map_locks_put(struct MapLocks *map, void *key, int value) {
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
 
-  if (!*write_state_ptr) {
-    *write_attempt_ptr = true;
-    return;
-  }
-
+void map_put(struct Map *map, void *key, int value) {
   map_key_hash *khash = map->khash;
   unsigned hash = khash(key);
   map_impl_put(map->busybits, map->keyps, map->khs, map->chns, map->vals, key,
                hash, value, map->capacity);
   ++map->size;
 }
-void map_locks_erase(struct MapLocks *map, void *key, void **trash) {
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
 
-  if (!*write_state_ptr) {
-    *write_attempt_ptr = true;
-    return;
-  }
-
+void map_erase(struct Map *map, void *key, void **trash) {
   map_key_hash *khash = map->khash;
   unsigned hash = khash(key);
   map_impl_erase(map->busybits, map->keyps, map->khs, map->chns, key,
                  map->keys_eq, hash, map->capacity, trash);
+
   --map->size;
 }
-unsigned map_locks_size(struct MapLocks *map) { return map->size; }
 
-struct VectorLocks;
+unsigned map_size(struct Map *map) { return map->size; }
 
-typedef void vector_init_elem(void *elem);
+// Makes sure the allocator structur fits into memory, and particularly into
+// 32 bit address space.
+#define IRANG_LIMIT (1048576)
 
-struct VectorLocks {
-  char *data;
-  int elem_size;
-  unsigned capacity;
-};
+// kinda hacky, but makes the proof independent of vigor_time_t... sort of
+#define malloc_block_time malloc_block_llongs
+#define time_integer llong_integer
+#define times llongs
 
-int vector_locks_allocate(int elem_size, unsigned capacity,
-                          vector_init_elem *init_elem,
-                          struct VectorLocks **vector_out) {
-  struct VectorLocks *old_vector_val = *vector_out;
-  struct VectorLocks *vector_alloc =
-      (struct VectorLocks *)rte_malloc(NULL, sizeof(struct VectorLocks), 64);
-  if (vector_alloc == 0)
-    return 0;
-  *vector_out = (struct VectorLocks *)vector_alloc;
-  char *data_alloc =
-      (char *)rte_malloc(NULL, (uint32_t)elem_size * capacity, 64);
-  if (data_alloc == 0) {
-    rte_free(vector_alloc);
-    *vector_out = old_vector_val;
-    return 0;
-  }
-  (*vector_out)->data = data_alloc;
-  (*vector_out)->elem_size = elem_size;
-  (*vector_out)->capacity = capacity;
-  for (unsigned i = 0; i < capacity; ++i) {
-    init_elem((*vector_out)->data + elem_size * (int)i);
-  }
-  return 1;
-}
-void vector_locks_borrow(struct VectorLocks *vector, int index,
-                         void **val_out) {
-  *val_out = vector->data + index * vector->elem_size;
-}
-void vector_locks_return(struct VectorLocks *vector, int index, void *value) {}
+#define DCHAIN_RESERVED (2)
 
-struct dchain_locks_cell {
+struct dchain_cell {
   int prev;
   int next;
 };
 
-#define DCHAIN_RESERVED (2)
+struct DoubleChain {
+  struct dchain_cell *cells;
+  vigor_time_t *timestamps;
+};
 
 enum DCHAIN_ENUM {
   ALLOC_LIST_HEAD = 0,
@@ -363,128 +310,39 @@ enum DCHAIN_ENUM {
   INDEX_SHIFT = DCHAIN_RESERVED
 };
 
-void dchain_locks_impl_activity_init(struct dchain_locks_cell *cells,
-                                     int size) {
-  struct dchain_locks_cell *al_head = cells + ALLOC_LIST_HEAD;
-  al_head->prev = ALLOC_LIST_HEAD;
-  al_head->next = ALLOC_LIST_HEAD;
-  int i = INDEX_SHIFT;
-
-  while (i < (size + INDEX_SHIFT)) {
-    struct dchain_locks_cell *current = cells + i;
-    current->next = FREE_LIST_HEAD;
-    current->prev = current->next;
-    ++i;
-  }
-}
-
-int dchain_locks_impl_activate_index(struct dchain_locks_cell *cells,
-                                     int index) {
-  int lifted = index + INDEX_SHIFT;
-
-  struct dchain_locks_cell *liftedp = cells + lifted;
-  int lifted_next = liftedp->next;
-  int lifted_prev = liftedp->prev;
-
-  // The index is already active.
-  if (lifted_next != FREE_LIST_HEAD) {
-    // There is only one element allocated - no point in changing anything
-    if (lifted_next == ALLOC_LIST_HEAD) {
-      return 0;
-    }
-
-    // Unlink it from the middle of the "alloc" chain.
-    struct dchain_locks_cell *lifted_prevp = cells + lifted_prev;
-    lifted_prevp->next = lifted_next;
-
-    struct dchain_locks_cell *lifted_nextp = cells + lifted_next;
-    lifted_nextp->prev = lifted_prev;
-
-    struct dchain_locks_cell *al_head = cells + ALLOC_LIST_HEAD;
-    int al_head_prev = al_head->prev;
-  }
-
-  struct dchain_locks_cell *al_head = cells + ALLOC_LIST_HEAD;
-  int al_head_prev = al_head->prev;
-
-  // Link it at the very end - right before the special link.
-  liftedp->next = ALLOC_LIST_HEAD;
-  liftedp->prev = al_head_prev;
-
-  struct dchain_locks_cell *al_head_prevp = cells + al_head_prev;
-  al_head_prevp->next = lifted;
-
-  al_head->prev = lifted;
-
-  return 1;
-}
-
-int dchain_locks_impl_deactivate_index(struct dchain_locks_cell *cells,
-                                       int index) {
-  int freed = index + INDEX_SHIFT;
-
-  struct dchain_locks_cell *freedp = cells + freed;
-  int freed_prev = freedp->prev;
-  int freed_next = freedp->next;
-
-  // The index is already free.
-  if (freed_next == FREE_LIST_HEAD) {
-    return 0;
-  }
-
-  struct dchain_locks_cell *freed_prevp = cells + freed_prev;
-  freed_prevp->next = freed_next;
-
-  struct dchain_locks_cell *freed_nextp = cells + freed_next;
-  freed_nextp->prev = freed_prev;
-
-  freedp->next = FREE_LIST_HEAD;
-  freedp->prev = freedp->next;
-
-  return 1;
-}
-
-int dchain_locks_impl_is_index_active(struct dchain_locks_cell *cells,
-                                      int index) {
-  struct dchain_locks_cell *cell = cells + index + INDEX_SHIFT;
-  return cell->next != FREE_LIST_HEAD;
-}
-
-void dchain_locks_impl_init(struct dchain_locks_cell *cells, int size) {
-
-  struct dchain_locks_cell *al_head = cells + ALLOC_LIST_HEAD;
+void dchain_impl_init(struct dchain_cell *cells, int size) {
+  struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
   al_head->prev = 0;
   al_head->next = 0;
   int i = INDEX_SHIFT;
 
-  struct dchain_locks_cell *fl_head = cells + FREE_LIST_HEAD;
+  struct dchain_cell *fl_head = cells + FREE_LIST_HEAD;
   fl_head->next = i;
   fl_head->prev = fl_head->next;
 
   while (i < (size + INDEX_SHIFT - 1)) {
-    struct dchain_locks_cell *current = cells + i;
+    struct dchain_cell *current = cells + i;
     current->next = i + 1;
     current->prev = current->next;
 
     ++i;
   }
 
-  struct dchain_locks_cell *last = cells + i;
+  struct dchain_cell *last = cells + i;
   last->next = FREE_LIST_HEAD;
   last->prev = last->next;
 }
 
-int dchain_locks_impl_allocate_new_index(struct dchain_locks_cell *cells,
-                                         int *index) {
-  struct dchain_locks_cell *fl_head = cells + FREE_LIST_HEAD;
-  struct dchain_locks_cell *al_head = cells + ALLOC_LIST_HEAD;
+int dchain_impl_allocate_new_index(struct dchain_cell *cells, int *index) {
+  struct dchain_cell *fl_head = cells + FREE_LIST_HEAD;
+  struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
   int allocated = fl_head->next;
   if (allocated == FREE_LIST_HEAD) {
     return 0;
   }
 
-  struct dchain_locks_cell *allocp = cells + allocated;
-
+  struct dchain_cell *allocp = cells + allocated;
+  // Extract the link from the "empty" chain.
   fl_head->next = allocp->next;
   fl_head->prev = fl_head->next;
 
@@ -492,18 +350,19 @@ int dchain_locks_impl_allocate_new_index(struct dchain_locks_cell *cells,
   allocp->next = ALLOC_LIST_HEAD;
   allocp->prev = al_head->prev;
 
-  struct dchain_locks_cell *alloc_head_prevp = cells + al_head->prev;
+  struct dchain_cell *alloc_head_prevp = cells + al_head->prev;
   alloc_head_prevp->next = allocated;
   al_head->prev = allocated;
 
   *index = allocated - INDEX_SHIFT;
+
   return 1;
 }
 
-int dchain_locks_impl_free_index(struct dchain_locks_cell *cells, int index) {
+int dchain_impl_free_index(struct dchain_cell *cells, int index) {
   int freed = index + INDEX_SHIFT;
 
-  struct dchain_locks_cell *freedp = cells + freed;
+  struct dchain_cell *freedp = cells + freed;
   int freed_prev = freedp->prev;
   int freed_next = freedp->next;
 
@@ -513,43 +372,29 @@ int dchain_locks_impl_free_index(struct dchain_locks_cell *cells, int index) {
       return 0;
     }
   }
-  struct dchain_locks_cell *fr_head = cells + FREE_LIST_HEAD;
 
-  struct dchain_locks_cell *freed_prevp = cells + freed_prev;
+  struct dchain_cell *fr_head = cells + FREE_LIST_HEAD;
+  struct dchain_cell *freed_prevp = cells + freed_prev;
   freed_prevp->next = freed_next;
 
-  struct dchain_locks_cell *freed_nextp = cells + freed_next;
+  struct dchain_cell *freed_nextp = cells + freed_next;
   freed_nextp->prev = freed_prev;
 
-  // Add the link to the "free" chain.
   freedp->next = fr_head->next;
   freedp->prev = freedp->next;
 
   fr_head->next = freed;
   fr_head->prev = fr_head->next;
+
   return 1;
 }
 
-int dchain_locks_impl_next(struct dchain_locks_cell *cells, int index,
-                           int *next) {
-  struct dchain_locks_cell *cell = cells + index + INDEX_SHIFT;
+int dchain_impl_get_oldest_index(struct dchain_cell *cells, int *index) {
+  struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
 
-  if (cell->next == ALLOC_LIST_HEAD) {
-    return 0;
-  }
-
-  *next = cell->next - INDEX_SHIFT;
-  return 1;
-}
-
-int dchain_locks_impl_get_oldest_index(struct dchain_locks_cell *cells,
-                                       int *index) {
-  struct dchain_locks_cell *al_head = cells + ALLOC_LIST_HEAD;
   // No allocated indexes.
-  if (al_head->next == al_head->prev) {
-    if (al_head->next == ALLOC_LIST_HEAD) {
-      return 0;
-    }
+  if (al_head->next == ALLOC_LIST_HEAD) {
+    return 0;
   }
 
   *index = al_head->next - INDEX_SHIFT;
@@ -557,84 +402,44 @@ int dchain_locks_impl_get_oldest_index(struct dchain_locks_cell *cells,
   return 1;
 }
 
-int dchain_locks_impl_reposition_index(struct dchain_locks_cell *cells,
-                                       int index, int new_prev_index) {
+int dchain_impl_rejuvenate_index(struct dchain_cell *cells, int index) {
   int lifted = index + INDEX_SHIFT;
 
-  struct dchain_locks_cell *liftedp = cells + lifted;
-
+  struct dchain_cell *liftedp = cells + lifted;
   int lifted_next = liftedp->next;
   int lifted_prev = liftedp->prev;
 
-  // The index is not allocated.
-  if (lifted_next == lifted_prev && lifted_next != ALLOC_LIST_HEAD) {
-    return 0;
-  }
-
-  struct dchain_locks_cell *lifted_prevp = cells + lifted_prev;
-  lifted_prevp->next = lifted_next;
-
-  struct dchain_locks_cell *lifted_nextp = cells + lifted_next;
-  lifted_nextp->prev = lifted_prev;
-
-  int new_prev = new_prev_index + INDEX_SHIFT;
-  struct dchain_locks_cell *new_prevp = cells + new_prev;
-  int new_prev_next = new_prevp->next;
-
-  liftedp->prev = new_prev;
-  liftedp->next = new_prev_next;
-
-  struct dchain_locks_cell *new_prev_nextp = cells + new_prev_next;
-
-  new_prev_nextp->prev = lifted;
-  new_prevp->next = lifted;
-
-  return 1;
-}
-
-int dchain_locks_impl_rejuvenate_index(struct dchain_locks_cell *cells,
-                                       int index) {
-  int lifted = index + INDEX_SHIFT;
-
-  struct dchain_locks_cell *liftedp = cells + lifted;
-  int lifted_next = liftedp->next;
-  int lifted_prev = liftedp->prev;
-
-  // The index is not allocated.
   if (lifted_next == lifted_prev) {
     if (lifted_next != ALLOC_LIST_HEAD) {
       return 0;
     } else {
-      // There is only one element allocated - no point in changing anything
       return 1;
     }
   }
 
-  struct dchain_locks_cell *lifted_prevp = cells + lifted_prev;
+  struct dchain_cell *lifted_prevp = cells + lifted_prev;
   lifted_prevp->next = lifted_next;
 
-  struct dchain_locks_cell *lifted_nextp = cells + lifted_next;
+  struct dchain_cell *lifted_nextp = cells + lifted_next;
   lifted_nextp->prev = lifted_prev;
 
-  struct dchain_locks_cell *al_head = cells + ALLOC_LIST_HEAD;
+  struct dchain_cell *al_head = cells + ALLOC_LIST_HEAD;
   int al_head_prev = al_head->prev;
 
-  // Link it at the very end - right before the special link.
   liftedp->next = ALLOC_LIST_HEAD;
   liftedp->prev = al_head_prev;
 
-  struct dchain_locks_cell *al_head_prevp = cells + al_head_prev;
+  struct dchain_cell *al_head_prevp = cells + al_head_prev;
   al_head_prevp->next = lifted;
 
   al_head->prev = lifted;
   return 1;
 }
 
-int dchain_locks_impl_is_index_allocated(struct dchain_locks_cell *cells,
-                                         int index) {
+int dchain_impl_is_index_allocated(struct dchain_cell *cells, int index) {
   int lifted = index + INDEX_SHIFT;
 
-  struct dchain_locks_cell *liftedp = cells + lifted;
+  struct dchain_cell *liftedp = cells + lifted;
   int lifted_next = liftedp->next;
   int lifted_prev = liftedp->prev;
 
@@ -650,253 +455,164 @@ int dchain_locks_impl_is_index_allocated(struct dchain_locks_cell *cells,
   }
 }
 
-struct DoubleChainLocks;
-// Makes sure the allocator structur fits into memory, and particularly into
-// 32 bit address space.
-#define IRANG_LIMIT (1048576)
+int dchain_allocate(int index_range, struct DoubleChain **chain_out) {
 
-// kinda hacky, but makes the proof independent of vigor_time_t... sort of
-#define malloc_block_time malloc_block_llongs
-#define time_integer llong_integer
-#define times llongs
-
-struct DoubleChainLocks {
-  struct dchain_locks_cell *cells[RTE_MAX_LCORE];
-  struct dchain_locks_cell *active_cells[RTE_MAX_LCORE];
-  vigor_time_t *timestamps[RTE_MAX_LCORE];
-  int range;
-};
-
-int dchain_locks_allocate(int index_range,
-                          struct DoubleChainLocks **chain_out) {
-
-  struct DoubleChainLocks *old_chain_out = *chain_out;
-  struct DoubleChainLocks *chain_alloc = (struct DoubleChainLocks *)rte_malloc(
-      NULL, sizeof(struct DoubleChainLocks), 0);
+  struct DoubleChain *old_chain_out = *chain_out;
+  struct DoubleChain *chain_alloc =
+      (struct DoubleChain *)rte_malloc(NULL, sizeof(struct DoubleChain), 64);
   if (chain_alloc == NULL)
     return 0;
-  *chain_out = (struct DoubleChainLocks *)chain_alloc;
+  *chain_out = (struct DoubleChain *)chain_alloc;
 
-  unsigned lcore_id;
-  RTE_LCORE_FOREACH(lcore_id) {
-    struct dchain_locks_cell *cells_alloc =
-        (struct dchain_locks_cell *)rte_malloc(
-            NULL,
-            sizeof(struct dchain_locks_cell) * (index_range + DCHAIN_RESERVED),
-            0);
-    if (cells_alloc == NULL) {
-      rte_free(chain_alloc);
-      *chain_out = old_chain_out;
-      return 0;
-    }
-    (*chain_out)->cells[lcore_id] = cells_alloc;
-
-    struct dchain_locks_cell *active_cells_alloc =
-        (struct dchain_locks_cell *)rte_malloc(
-            NULL,
-            sizeof(struct dchain_locks_cell) * (index_range + DCHAIN_RESERVED),
-            0);
-    if (active_cells_alloc == NULL) {
-      rte_free((void *)cells_alloc);
-      rte_free(chain_alloc);
-      *chain_out = old_chain_out;
-      return 0;
-    }
-    (*chain_out)->active_cells[lcore_id] = active_cells_alloc;
-    dchain_locks_impl_activity_init((*chain_out)->active_cells[lcore_id],
-                                    index_range);
-
-    vigor_time_t *timestamps_alloc = (vigor_time_t *)rte_zmalloc(
-        NULL, sizeof(vigor_time_t) * (index_range), 0);
-    if (timestamps_alloc == NULL) {
-      rte_free((void *)cells_alloc);
-      rte_free((void *)active_cells_alloc);
-      rte_free(chain_alloc);
-      *chain_out = old_chain_out;
-      return 0;
-    }
-    for (int i = 0; i < index_range; i++) {
-      timestamps_alloc[i] = -1;
-    }
-    (*chain_out)->range = index_range;
-    (*chain_out)->timestamps[lcore_id] = timestamps_alloc;
-
-    dchain_locks_impl_init((*chain_out)->cells[lcore_id], index_range);
+  struct dchain_cell *cells_alloc = (struct dchain_cell *)rte_malloc(
+      NULL, sizeof(struct dchain_cell) * (index_range + DCHAIN_RESERVED), 64);
+  if (cells_alloc == NULL) {
+    rte_free(chain_alloc);
+    *chain_out = old_chain_out;
+    return 0;
   }
+  (*chain_out)->cells = cells_alloc;
+
+  vigor_time_t *timestamps_alloc = (vigor_time_t *)rte_malloc(
+      NULL, sizeof(vigor_time_t) * (index_range), 64);
+  if (timestamps_alloc == NULL) {
+    rte_free((void *)cells_alloc);
+    rte_free(chain_alloc);
+    *chain_out = old_chain_out;
+    return 0;
+  }
+  (*chain_out)->timestamps = timestamps_alloc;
+
+  dchain_impl_init((*chain_out)->cells, index_range);
 
   return 1;
 }
 
-int dchain_locks_allocate_new_index(struct DoubleChainLocks *chain,
-                                    int *index_out, vigor_time_t time) {
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
-
-  if (!*write_state_ptr) {
-    *write_attempt_ptr = true;
-    return 1;
-  }
-
-  int ret = -1;
-  unsigned lcore_id;
-  RTE_LCORE_FOREACH(lcore_id) {
-    int new_ret =
-        dchain_locks_impl_allocate_new_index(chain->cells[lcore_id], index_out);
-    ret = new_ret;
-    if (new_ret) {
-      chain->timestamps[lcore_id][*index_out] = time;
-    }
-  }
+int dchain_allocate_new_index(struct DoubleChain *chain, int *index_out,
+                              vigor_time_t time) {
+  int ret = dchain_impl_allocate_new_index(chain->cells, index_out);
 
   if (ret) {
-    lcore_id = rte_lcore_id();
-    dchain_locks_impl_activate_index(chain->active_cells[lcore_id], *index_out);
+    chain->timestamps[*index_out] = time;
   }
 
   return ret;
 }
 
-int dchain_locks_rejuvenate_index(struct DoubleChainLocks *chain, int index,
-                                  vigor_time_t time) {
-  unsigned int lcore_id = rte_lcore_id();
-  int ret = dchain_locks_impl_rejuvenate_index(chain->cells[lcore_id], index);
+int dchain_rejuvenate_index(struct DoubleChain *chain, int index,
+                            vigor_time_t time) {
+  int ret = dchain_impl_rejuvenate_index(chain->cells, index);
 
   if (ret) {
-    chain->timestamps[lcore_id][index] = time;
-    dchain_locks_impl_activate_index(chain->active_cells[lcore_id], index);
+    chain->timestamps[index] = time;
   }
 
   return ret;
 }
 
-int dchain_locks_update_timestamp(struct DoubleChainLocks *chain, int index,
-                                  vigor_time_t time) {
-  unsigned int lcore_id = rte_lcore_id();
+int dchain_expire_one_index(struct DoubleChain *chain, int *index_out,
+                            vigor_time_t time) {
+  int has_ind = dchain_impl_get_oldest_index(chain->cells, index_out);
 
-  int new_prev = -1;
-  int prev = index;
-  int next;
-
-  vigor_time_t prev_time = chain->timestamps[lcore_id][prev];
-  vigor_time_t next_time;
-
-  while (dchain_locks_impl_next(chain->cells[lcore_id], prev, &next)) {
-    next_time = chain->timestamps[lcore_id][next];
-
-    if (prev_time <= time && time <= next_time && index != prev) {
-      new_prev = prev;
-      break;
+  if (has_ind) {
+    if (chain->timestamps[*index_out] < time) {
+      int rez = dchain_impl_free_index(chain->cells, *index_out);
+      return rez;
     }
-
-    prev = next;
-    prev_time = next_time;
-  }
-
-  int ret;
-
-  if (new_prev == -1) {
-    ret = dchain_locks_impl_rejuvenate_index(chain->cells[lcore_id], index);
-  } else {
-    ret = dchain_locks_impl_reposition_index(chain->cells[lcore_id], index,
-                                             new_prev);
-  }
-
-  return ret;
-}
-
-int dchain_locks_free_index(struct DoubleChainLocks *chain, int index) {
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
-
-  if (!*write_state_ptr) {
-    *write_attempt_ptr = true;
-    return 1;
-  }
-
-  int rez = -1;
-  unsigned lcore_id;
-
-  RTE_LCORE_FOREACH(lcore_id) {
-    int new_rez = dchain_locks_impl_free_index(chain->cells[lcore_id], index);
-    dchain_locks_impl_deactivate_index(chain->active_cells[lcore_id], index);
-    rez = new_rez;
-    chain->timestamps[lcore_id][index] = -1;
-  }
-
-  return rez;
-}
-
-int dchain_locks_expire_one_index(struct DoubleChainLocks *chain,
-                                  int *index_out, vigor_time_t time) {
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
-
-  unsigned int this_lcore_id = rte_lcore_id();
-
-  int has_ind = dchain_locks_impl_get_oldest_index(
-      chain->active_cells[this_lcore_id], index_out);
-
-  if (has_ind && chain->timestamps[this_lcore_id][*index_out] > -1 &&
-      chain->timestamps[this_lcore_id][*index_out] < time) {
-    if (!*write_state_ptr) {
-      *write_attempt_ptr = true;
-      return 1;
-    }
-
-    unsigned int lcore_id;
-    vigor_time_t most_recent = -1;
-    RTE_LCORE_FOREACH(lcore_id) {
-      if (chain->timestamps[lcore_id][*index_out] > most_recent) {
-        most_recent = chain->timestamps[lcore_id][*index_out];
-      }
-    }
-
-    if (most_recent >= time) {
-      return dchain_locks_update_timestamp(chain, *index_out, most_recent);
-    }
-
-    return dchain_locks_free_index(chain, *index_out);
   }
 
   return 0;
 }
 
-int dchain_locks_is_index_allocated(struct DoubleChainLocks *chain, int index) {
-  return dchain_locks_impl_is_index_allocated(chain->cells[rte_lcore_id()],
-                                              index);
+int dchain_is_index_allocated(struct DoubleChain *chain, int index) {
+  return dchain_impl_is_index_allocated(chain->cells, index);
 }
 
-typedef void entry_extract_key(void *entry, void **key);
-typedef void entry_pack_key(void *entry, void *key);
+int dchain_free_index(struct DoubleChain *chain, int index) {
+  return dchain_impl_free_index(chain->cells, index);
+}
 
-int expire_items_single_map_locks(struct DoubleChainLocks *chain,
-                                  struct VectorLocks *vector,
-                                  struct MapLocks *map, vigor_time_t time) {
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
+#define VECTOR_CAPACITY_UPPER_LIMIT 140000
 
+typedef void vector_init_elem(void *elem);
+
+struct Vector {
+  char *data;
+  int elem_size;
+  unsigned capacity;
+};
+
+int vector_allocate(int elem_size, unsigned capacity,
+                    vector_init_elem *init_elem, struct Vector **vector_out) {
+  struct Vector *old_vector_val = *vector_out;
+  struct Vector *vector_alloc =
+      (struct Vector *)rte_malloc(NULL, sizeof(struct Vector), 64);
+  if (vector_alloc == 0)
+    return 0;
+  *vector_out = (struct Vector *)vector_alloc;
+
+  char *data_alloc =
+      (char *)rte_malloc(NULL, (uint32_t)elem_size * capacity, 64);
+  if (data_alloc == 0) {
+    rte_free(vector_alloc);
+    *vector_out = old_vector_val;
+    return 0;
+  }
+  (*vector_out)->data = data_alloc;
+  (*vector_out)->elem_size = elem_size;
+  (*vector_out)->capacity = capacity;
+
+  for (unsigned i = 0; i < capacity; ++i) {
+    init_elem((*vector_out)->data + elem_size * (int)i);
+  }
+
+  return 1;
+}
+
+void vector_borrow(struct Vector *vector, int index, void **val_out) {
+  *val_out = vector->data + index * vector->elem_size;
+}
+
+void vector_return(struct Vector *vector, int index, void *value) {}
+
+int expire_items_single_map(struct DoubleChain *chain, struct Vector *vector,
+                            struct Map *map, vigor_time_t time) {
   int count = 0;
   int index = -1;
 
-  while (dchain_locks_expire_one_index(chain, &index, time)) {
-    if (!*write_state_ptr) {
-      *write_attempt_ptr = true;
-      return 1;
-    }
-
+  while (dchain_expire_one_index(chain, &index, time)) {
     void *key;
-    vector_locks_borrow(vector, index, &key);
-    map_locks_erase(map, key, &key);
-    vector_locks_return(vector, index, key);
+    vector_borrow(vector, index, &key);
+    map_erase(map, key, &key);
+    vector_return(vector, index, key);
+
     ++count;
   }
 
   return count;
 }
 
+int expire_items_single_map_iteratively(struct Vector *vector, struct Map *map,
+                                        int start, int n_elems) {
+  assert(start >= 0);
+  assert(n_elems >= 0);
+  void *key;
+  for (int i = start; i < n_elems; i++) {
+    vector_borrow(vector, i, (void **)&key);
+    map_erase(map, key, (void **)&key);
+    vector_return(vector, i, key);
+  }
+}
+
 // Careful: SKETCH_HASHES needs to be <= SKETCH_SALTS_BANK_SIZE
 #define SKETCH_HASHES 4
 #define SKETCH_SALTS_BANK_SIZE 64
+
+struct internal_data {
+  unsigned hashes[SKETCH_HASHES];
+  int present[SKETCH_HASHES];
+  int buckets_indexes[SKETCH_HASHES];
+};
 
 static const uint32_t SKETCH_SALTS[SKETCH_SALTS_BANK_SIZE] = {
   0x9b78350f, 0x9bcf144c, 0x8ab29a3e, 0x34d48bf5, 0x78e47449, 0xd6e4af1d,
@@ -912,24 +628,17 @@ static const uint32_t SKETCH_SALTS[SKETCH_SALTS_BANK_SIZE] = {
   0xceee91e5, 0x1d4c6b18, 0x2a80e6df, 0x396f4d23,
 };
 
-struct internal_data {
-  unsigned hashes[SKETCH_HASHES];
-  int present[SKETCH_HASHES];
-  int buckets_indexes[SKETCH_HASHES];
-} __attribute__((aligned(64)));
-
-struct SketchLocks {
-  struct MapLocks *clients;
-  struct VectorLocks *keys;
-  struct VectorLocks *buckets;
-  struct DoubleChainLocks *allocators[SKETCH_HASHES];
+struct Sketch {
+  struct Map *clients;
+  struct Vector *keys;
+  struct Vector *buckets;
+  struct DoubleChain *allocators[SKETCH_HASHES];
 
   uint32_t capacity;
   uint16_t threshold;
 
   map_key_hash *kh;
-
-  struct internal_data internal[RTE_MAX_LCORE];
+  struct internal_data internal;
 };
 
 struct hash {
@@ -938,6 +647,12 @@ struct hash {
 
 struct bucket {
   uint32_t value;
+};
+
+struct sketch_data {
+  unsigned hashes[SKETCH_HASHES];
+  int present[SKETCH_HASHES];
+  int buckets_indexes[SKETCH_HASHES];
 };
 
 unsigned find_next_power_of_2_bigger_than(uint32_t d) {
@@ -973,12 +688,11 @@ unsigned hash_hash(void *obj) {
 
 void bucket_allocate(void *obj) { (uintptr_t) obj; }
 
-int sketch_locks_allocate(map_key_hash *kh, uint32_t capacity,
-                          uint16_t threshold, struct SketchLocks **sketch_out) {
+int sketch_allocate(map_key_hash *kh, uint32_t capacity, uint16_t threshold,
+                    struct Sketch **sketch_out) {
   assert(SKETCH_HASHES <= SKETCH_SALTS_BANK_SIZE);
 
-  struct SketchLocks *sketch_alloc =
-      (struct SketchLocks *)rte_malloc(NULL, sizeof(struct SketchLocks), 0);
+  struct Sketch *sketch_alloc = (struct Sketch *)malloc(sizeof(struct Sketch));
   if (sketch_alloc == NULL) {
     return 0;
   }
@@ -993,26 +707,26 @@ int sketch_locks_allocate(map_key_hash *kh, uint32_t capacity,
       find_next_power_of_2_bigger_than(capacity * SKETCH_HASHES);
 
   (*sketch_out)->clients = NULL;
-  if (map_locks_allocate(hash_eq, hash_hash, total_sketch_capacity,
-                         &((*sketch_out)->clients)) == 0) {
+  if (map_allocate(hash_eq, hash_hash, total_sketch_capacity,
+                   &((*sketch_out)->clients)) == 0) {
     return 0;
   }
 
   (*sketch_out)->keys = NULL;
-  if (vector_locks_allocate(sizeof(struct hash), total_sketch_capacity,
-                            hash_allocate, &((*sketch_out)->keys)) == 0) {
+  if (vector_allocate(sizeof(struct hash), total_sketch_capacity, hash_allocate,
+                      &((*sketch_out)->keys)) == 0) {
     return 0;
   }
 
   (*sketch_out)->buckets = NULL;
-  if (vector_locks_allocate(sizeof(struct bucket), total_sketch_capacity,
-                            bucket_allocate, &((*sketch_out)->buckets)) == 0) {
+  if (vector_allocate(sizeof(struct bucket), total_sketch_capacity,
+                      bucket_allocate, &((*sketch_out)->buckets)) == 0) {
     return 0;
   }
 
   for (int i = 0; i < SKETCH_HASHES; i++) {
     (*sketch_out)->allocators[i] = NULL;
-    if (dchain_locks_allocate(capacity, &((*sketch_out)->allocators[i])) == 0) {
+    if (dchain_allocate(capacity, &((*sketch_out)->allocators[i])) == 0) {
       return 0;
     }
   }
@@ -1020,84 +734,66 @@ int sketch_locks_allocate(map_key_hash *kh, uint32_t capacity,
   return 1;
 }
 
-void sketch_locks_compute_hashes(struct SketchLocks *sketch, void *key) {
-  unsigned int lcore_id = rte_lcore_id();
-
+void sketch_compute_hashes(struct Sketch *sketch, void *key) {
   for (int i = 0; i < SKETCH_HASHES; i++) {
-    sketch->internal[lcore_id].buckets_indexes[i] = -1;
-    sketch->internal[lcore_id].present[i] = 0;
-    sketch->internal[lcore_id].hashes[i] = 0;
+    sketch->internal.buckets_indexes[i] = -1;
+    sketch->internal.present[i] = 0;
+    sketch->internal.hashes[i] = 0;
 
-    sketch->internal[lcore_id].hashes[i] = __builtin_ia32_crc32si(
-        sketch->internal[lcore_id].hashes[i], SKETCH_SALTS[i]);
-    sketch->internal[lcore_id].hashes[i] = __builtin_ia32_crc32si(
-        sketch->internal[lcore_id].hashes[i], sketch->kh(key));
-    sketch->internal[lcore_id].hashes[i] %= sketch->capacity;
+    sketch->internal.hashes[i] =
+        __builtin_ia32_crc32si(sketch->internal.hashes[i], SKETCH_SALTS[i]);
+    sketch->internal.hashes[i] =
+        __builtin_ia32_crc32si(sketch->internal.hashes[i], sketch->kh(key));
+    sketch->internal.hashes[i] %= sketch->capacity;
   }
 }
 
-void sketch_locks_refresh(struct SketchLocks *sketch, vigor_time_t now) {
-  unsigned int lcore_id = rte_lcore_id();
-
+void sketch_refresh(struct Sketch *sketch, vigor_time_t now) {
   for (int i = 0; i < SKETCH_HASHES; i++) {
-    map_locks_get(sketch->clients, &sketch->internal[lcore_id].hashes[i],
-                  &sketch->internal[lcore_id].buckets_indexes[i]);
-    dchain_locks_rejuvenate_index(sketch->allocators[i],
-                                  sketch->internal[lcore_id].buckets_indexes[i],
-                                  now);
+    map_get(sketch->clients, &sketch->internal.hashes[i],
+            &sketch->internal.buckets_indexes[i]);
+    dchain_rejuvenate_index(sketch->allocators[i],
+                            sketch->internal.buckets_indexes[i], now);
   }
 }
 
-int sketch_locks_fetch(struct SketchLocks *sketch) {
-  unsigned int lcore_id = rte_lcore_id();
-
+int sketch_fetch(struct Sketch *sketch) {
   int bucket_min_set = false;
   uint32_t *buckets_values[SKETCH_HASHES];
   uint32_t bucket_min = 0;
 
   for (int i = 0; i < SKETCH_HASHES; i++) {
-    sketch->internal[lcore_id].present[i] =
-        map_locks_get(sketch->clients, &sketch->internal[lcore_id].hashes[i],
-                      &sketch->internal[lcore_id].buckets_indexes[i]);
+    sketch->internal.present[i] =
+        map_get(sketch->clients, &sketch->internal.hashes[i],
+                &sketch->internal.buckets_indexes[i]);
 
-    if (!sketch->internal[lcore_id].present[i]) {
+    if (!sketch->internal.present[i]) {
       continue;
     }
 
-    int offseted =
-        sketch->internal[lcore_id].buckets_indexes[i] + sketch->capacity * i;
-    vector_locks_borrow(sketch->buckets, offseted, (void **)&buckets_values[i]);
+    int offseted = sketch->internal.buckets_indexes[i] + sketch->capacity * i;
+    vector_borrow(sketch->buckets, offseted, (void **)&buckets_values[i]);
 
     if (!bucket_min_set || bucket_min > *buckets_values[i]) {
       bucket_min = *buckets_values[i];
       bucket_min_set = true;
     }
 
-    vector_locks_return(sketch->buckets, offseted, buckets_values[i]);
+    vector_return(sketch->buckets, offseted, buckets_values[i]);
   }
 
   return bucket_min_set && bucket_min > sketch->threshold;
 }
 
-int sketch_locks_touch_buckets(struct SketchLocks *sketch, vigor_time_t now) {
-  unsigned int lcore_id = rte_lcore_id();
-
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
-
-  if (!*write_state_ptr) {
-    *write_attempt_ptr = true;
-    return false;
-  }
-
+int sketch_touch_buckets(struct Sketch *sketch, vigor_time_t now) {
   for (int i = 0; i < SKETCH_HASHES; i++) {
     int bucket_index = -1;
-    int present = map_locks_get(
-        sketch->clients, &sketch->internal[lcore_id].hashes[i], &bucket_index);
+    int present =
+        map_get(sketch->clients, &sketch->internal.hashes[i], &bucket_index);
 
     if (!present) {
-      int allocated_client = dchain_locks_allocate_new_index(
-          sketch->allocators[i], &bucket_index, now);
+      int allocated_client =
+          dchain_allocate_new_index(sketch->allocators[i], &bucket_index, now);
 
       if (!allocated_client) {
         // Sketch size limit reached.
@@ -1109,253 +805,43 @@ int sketch_locks_touch_buckets(struct SketchLocks *sketch, vigor_time_t now) {
       uint32_t *saved_hash = 0;
       uint32_t *saved_bucket = 0;
 
-      vector_locks_borrow(sketch->keys, offseted, (void **)&saved_hash);
-      vector_locks_borrow(sketch->buckets, offseted, (void **)&saved_bucket);
+      vector_borrow(sketch->keys, offseted, (void **)&saved_hash);
+      vector_borrow(sketch->buckets, offseted, (void **)&saved_bucket);
 
-      (*saved_hash) = sketch->internal[lcore_id].hashes[i];
+      (*saved_hash) = sketch->internal.hashes[i];
       (*saved_bucket) = 0;
-      map_locks_put(sketch->clients, saved_hash, bucket_index);
+      map_put(sketch->clients, saved_hash, bucket_index);
 
-      vector_locks_return(sketch->keys, offseted, saved_hash);
-      vector_locks_return(sketch->buckets, offseted, saved_bucket);
+      vector_return(sketch->keys, offseted, saved_hash);
+      vector_return(sketch->buckets, offseted, saved_bucket);
     } else {
-      dchain_locks_rejuvenate_index(sketch->allocators[i], bucket_index, now);
+      dchain_rejuvenate_index(sketch->allocators[i], bucket_index, now);
       uint32_t *bucket;
       int offseted = bucket_index + sketch->capacity * i;
-      vector_locks_borrow(sketch->buckets, offseted, (void **)&bucket);
+      vector_borrow(sketch->buckets, offseted, (void **)&bucket);
       (*bucket)++;
-      vector_locks_return(sketch->buckets, offseted, bucket);
+      vector_return(sketch->buckets, offseted, bucket);
     }
   }
 
   return true;
 }
 
-void sketch_locks_expire(struct SketchLocks *sketch, vigor_time_t time) {
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
-
+void sketch_expire(struct Sketch *sketch, vigor_time_t time) {
   int offset = 0;
   int index = -1;
 
   for (int i = 0; i < SKETCH_HASHES; i++) {
     offset = i * sketch->capacity;
 
-    while (dchain_locks_expire_one_index(sketch->allocators[i], &index, time)) {
-      if (!*write_state_ptr) {
-        *write_attempt_ptr = true;
-        return;
-      }
-
+    while (dchain_expire_one_index(sketch->allocators[i], &index, time)) {
       void *key;
-      vector_locks_borrow(sketch->keys, index + offset, &key);
-      map_locks_erase(sketch->clients, key, &key);
-      vector_locks_return(sketch->keys, index + offset, key);
+      vector_borrow(sketch->keys, index + offset, &key);
+      map_erase(sketch->clients, key, &key);
+      vector_return(sketch->keys, index + offset, key);
     }
   }
 }
-
-#define MAX_CHT_HEIGHT 40000
-
-uint64_t cht_loop(uint64_t k, uint64_t capacity) {
-  uint64_t g = k % capacity;
-  return g;
-}
-
-int cht_locks_fill_cht(struct VectorLocks *cht, uint32_t cht_height,
-                       uint32_t backend_capacity) {
-  // Generate the permutations of 0..(cht_height - 1) for each backend
-  int *permutations =
-      (int *)malloc(sizeof(int) * (int)(cht_height * backend_capacity));
-  if (permutations == 0) {
-    return 0;
-  }
-
-  for (uint32_t i = 0; i < backend_capacity; ++i) {
-    uint32_t offset_absolut = i * 31;
-    uint64_t offset = cht_loop(offset_absolut, cht_height);
-    uint64_t base_shift = cht_loop(i, cht_height - 1);
-    uint64_t shift = base_shift + 1;
-
-    for (uint32_t j = 0; j < cht_height; ++j) {
-      uint64_t permut = cht_loop(offset + shift * j, cht_height);
-      permutations[i * cht_height + j] = (int)permut;
-    }
-  }
-
-  int *next = (int *)malloc(sizeof(int) * (int)(cht_height));
-  if (next == 0) {
-    free(permutations);
-    return 0;
-  }
-
-  for (uint32_t i = 0; i < cht_height; ++i) {
-    next[i] = 0;
-  }
-
-  // Fill the priority lists for each hash in [0, cht_height)
-  for (uint32_t i = 0; i < cht_height; ++i) {
-    for (uint32_t j = 0; j < backend_capacity; ++j) {
-      uint32_t *value;
-
-      uint32_t index = j * cht_height + i;
-      int bucket_id = permutations[index];
-
-      int priority = next[bucket_id];
-      next[bucket_id] += 1;
-
-      // Update the CHT
-      vector_locks_borrow(cht,
-                          (int)(backend_capacity * ((uint32_t)bucket_id) +
-                                ((uint32_t)priority)),
-                          (void **)&value);
-      *value = j;
-      vector_locks_return(cht,
-                          (int)(backend_capacity * ((uint32_t)bucket_id) +
-                                ((uint32_t)priority)),
-                          (void *)value);
-    }
-  }
-
-  // Free memory
-  free(next);
-  free(permutations);
-  return 1;
-}
-
-int cht_locks_find_preferred_available_backend(
-    uint64_t hash, struct VectorLocks *cht,
-    struct DoubleChainLocks *active_backends, uint32_t cht_height,
-    uint32_t backend_capacity, int *chosen_backend) {
-  uint64_t start = cht_loop(hash, cht_height);
-  for (uint32_t i = 0; i < backend_capacity; ++i) {
-    uint64_t candidate_idx =
-        start * backend_capacity +
-        i; // There was a bug, right here, untill I tried to prove this.
-
-    uint32_t *candidate;
-    vector_locks_borrow(cht, (int)candidate_idx, (void **)&candidate);
-
-    if (dchain_locks_is_index_allocated(active_backends, (int)*candidate)) {
-      *chosen_backend = (int)*candidate;
-      vector_locks_return(cht, (int)candidate_idx, candidate);
-      return 1;
-    }
-
-    vector_locks_return(cht, (int)candidate_idx, candidate);
-  }
-
-  return 0;
-}
-
-int expire_items_single_map_offseted_locks(struct DoubleChainLocks *chain,
-                                           struct VectorLocks *vector,
-                                           struct MapLocks *map,
-                                           vigor_time_t time, int offset) {
-  assert(offset >= 0);
-
-  int count = 0;
-  int index = -1;
-
-  while (dchain_locks_expire_one_index(chain, &index, time)) {
-    void *key;
-    vector_locks_borrow(vector, index + offset, &key);
-    map_locks_erase(map, key, &key);
-    vector_locks_return(vector, index + offset, key);
-    ++count;
-  }
-
-  return count;
-}
-
-int expire_items_single_map_iteratively_locks(struct VectorLocks *vector,
-                                              struct MapLocks *map, int start,
-                                              int n_elems) {
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
-
-  if (n_elems != 0 && !*write_state_ptr) {
-    *write_attempt_ptr = true;
-    return 1;
-  }
-
-  assert(start >= 0);
-  assert(n_elems >= 0);
-  void *key;
-  for (int i = start; i < n_elems; i++) {
-    vector_locks_borrow(vector, i, (void **)&key);
-    map_locks_erase(map, key, (void **)&key);
-    vector_locks_return(vector, i, key);
-  }
-}
-
-/**********************************************
- *
- *                  NF-LOCKS
- *
- **********************************************/
-
-typedef struct {
-  rte_atomic32_t atom;
-} __attribute__((aligned(64))) atom_t;
-
-typedef struct {
-  atom_t *tokens;
-  atom_t write_token;
-} nf_lock_t;
-
-static inline void nf_lock_init(nf_lock_t *nfl) {
-  nfl->tokens = (atom_t *)rte_malloc(NULL, sizeof(atom_t) * RTE_MAX_LCORE, 64);
-
-  unsigned lcore_id;
-  RTE_LCORE_FOREACH(lcore_id) {
-    rte_atomic32_init(&nfl->tokens[lcore_id].atom);
-  }
-
-  rte_atomic32_init(&nfl->write_token.atom);
-}
-
-static inline void nf_lock_allow_writes(nf_lock_t *nfl) {
-  unsigned lcore_id = rte_lcore_id();
-  rte_atomic32_clear(&nfl->tokens[lcore_id].atom);
-}
-
-static inline void nf_lock_block_writes(nf_lock_t *nfl) {
-  unsigned lcore_id = rte_lcore_id();
-  while (!rte_atomic32_test_and_set(&nfl->tokens[lcore_id].atom)) {
-    // prevent the compiler from removing this loop
-    __asm__ __volatile__("");
-  }
-}
-
-static inline void nf_lock_write_lock(nf_lock_t *nfl) {
-  unsigned lcore_id = rte_lcore_id();
-  rte_atomic32_clear(&nfl->tokens[lcore_id].atom);
-
-  while (!rte_atomic32_test_and_set(&nfl->write_token.atom)) {
-    // prevent the compiler from removing this loop
-    __asm__ __volatile__("");
-  }
-
-  RTE_LCORE_FOREACH(lcore_id) {
-    while (!rte_atomic32_test_and_set(&nfl->tokens[lcore_id].atom)) {
-      __asm__ __volatile__("");
-    }
-  }
-}
-
-static inline void nf_lock_write_unlock(nf_lock_t *nfl) {
-  unsigned lcore_id;
-  RTE_LCORE_FOREACH(lcore_id) {
-    rte_atomic32_clear(&nfl->tokens[lcore_id].atom);
-  }
-
-  rte_atomic32_clear(&nfl->write_token.atom);
-}
-
-static nf_lock_t nf_lock;
-
-static void nf_util_init_locks() { nf_lock_init(&nf_lock); }
 
 /**********************************************
  *
@@ -1521,6 +1007,10 @@ struct rte_ether_hdr;
 #define IP_MIN_SIZE_WORDS 5
 #define WORD_SIZE 4
 
+// this is doing nothing here, just making compilation easier
+RTE_DEFINE_PER_LCORE(bool, write_attempt);
+RTE_DEFINE_PER_LCORE(bool, write_state);
+
 #define RETA_CONF_SIZE (ETH_RSS_RETA_SIZE_512 / RTE_RETA_GROUP_SIZE)
 
 typedef struct {
@@ -1679,9 +1169,6 @@ static void worker_main(void) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
 
-  bool *write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool *write_state_ptr = &RTE_PER_LCORE(write_state);
-
   printf("Core %u forwarding packets.\n", rte_lcore_id());
 
   if (rte_eth_dev_count_avail() != 2) {
@@ -1690,6 +1177,7 @@ static void worker_main(void) {
 
   while (1) {
     unsigned VIGOR_DEVICES_COUNT = rte_eth_dev_count_avail();
+
     for (uint16_t VIGOR_DEVICE = 0; VIGOR_DEVICE < VIGOR_DEVICES_COUNT;
          VIGOR_DEVICE++) {
       struct rte_mbuf *mbufs[VIGOR_BATCH_SIZE];
@@ -1698,35 +1186,19 @@ static void worker_main(void) {
 
       struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];
       uint16_t tx_count = 0;
+
       for (uint16_t n = 0; n < rx_count; n++) {
         uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
         vigor_time_t VIGOR_NOW = current_time();
-
-        *write_attempt_ptr = false;
-        *write_state_ptr = false;
-
-        nf_lock_block_writes(&nf_lock);
         uint16_t dst_device =
             nf_process(mbufs[n]->port, data, mbufs[n]->pkt_len, VIGOR_NOW);
-
-        if (*write_attempt_ptr) {
-          *write_state_ptr = true;
-
-          nf_lock_write_lock(&nf_lock);
-          uint16_t dst_device =
-              nf_process(mbufs[n]->port, data, mbufs[n]->pkt_len, VIGOR_NOW);
-          nf_lock_write_unlock(&nf_lock);
-        } else {
-          nf_lock_allow_writes(&nf_lock);
-        }
 
         if (dst_device == VIGOR_DEVICE) {
           rte_pktmbuf_free(mbufs[n]);
         } else if (dst_device == FLOOD_FRAME) {
           flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
-        } else { // includes flood when 2 devices, which is equivalent to just
-                 // a
-                 // send          
+        } else {
+          
           mbufs_to_send[tx_count] = mbufs[n];
           tx_count++;
         }
@@ -2175,8 +1647,6 @@ int main(int argc, char **argv) {
   // Create a memory pool
   unsigned nb_devices = rte_eth_dev_count_avail();
 
-  nf_util_init_locks();
-
   char MBUF_POOL_NAME[20];
   struct rte_mempool **mbuf_pools;
   mbuf_pools = (struct rte_mempool **)rte_malloc(
@@ -2229,27 +1699,63 @@ int main(int argc, char **argv) {
   return 0;
 }
 
+struct StaticKey {
+  struct rte_ether_addr addr;
+  uint16_t device;
+};
 struct DynamicValue {
   uint16_t device;
 };
+uint32_t StaticKey_hash(void* obj) {
+  struct StaticKey *id = (struct StaticKey *)obj;
+
+  unsigned hash = 0;
+  unsigned addr_hash = rte_ether_addr_hash(&id->addr);
+  hash = __builtin_ia32_crc32si(hash, addr_hash);
+  hash = __builtin_ia32_crc32si(hash, id->device);
+  return hash;
+}
+void StaticKey_allocate(void* obj) {
+  struct StaticKey *id = (struct StaticKey *)obj;
+
+  id->addr.addr_bytes[0] = 0;
+  id->addr.addr_bytes[1] = 0;
+  id->addr.addr_bytes[2] = 0;
+  id->addr.addr_bytes[3] = 0;
+  id->addr.addr_bytes[4] = 0;
+  id->addr.addr_bytes[5] = 0;
+
+  id->device = 0;
+}
 void DynamicValue_allocate(void* obj) {
   struct DynamicValue *id = (struct DynamicValue *)obj;
   id->device = 0;
 }
+bool StaticKey_eq(void* a, void* b) {
+  struct StaticKey *id1 = (struct StaticKey *)a;
+  struct StaticKey *id2 = (struct StaticKey *)b;
+
+  
+
+ _Bool 
+
+      addr_eq = rte_ether_addr_eq(&id1->addr, &id2->addr);
+  return addr_eq &&(id1->device == id2->device);
+}
 
 uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
-  0xea, 0x35, 0xa0, 0x8c, 0x6d, 0xd8, 0xb9, 0xaf, 
-  0xa4, 0x4d, 0xb0, 0xd5, 0x8f, 0x9a, 0x56, 0xa0, 
-  0xfd, 0xff, 0xe, 0x4a, 0x62, 0x10, 0xa9, 0x34, 
-  0x28, 0xba, 0xd5, 0x73, 0x3f, 0xd0, 0xe, 0x29, 
-  0x5, 0xae, 0xb5, 0x73, 0x87, 0x6f, 0x22, 0x2b
+  0x56, 0x2, 0x33, 0x24, 0x78, 0x4d, 0xb8, 0x85, 
+  0x81, 0x48, 0xf7, 0x95, 0xfc, 0x6a, 0x83, 0x1, 
+  0xc2, 0x1f, 0xe2, 0xd0, 0xf1, 0x6e, 0x47, 0x30, 
+  0x7a, 0x59, 0xee, 0xf, 0x85, 0x67, 0xc5, 0xdb, 
+  0x6a, 0xf8, 0x0, 0xe2, 0x45, 0xb8, 0x67, 0xc7
 };
 uint8_t hash_key_1[RSS_HASH_KEY_LENGTH] = {
-  0xc0, 0x1, 0x9b, 0x94, 0xee, 0xea, 0x0, 0x9b, 
-  0xf0, 0x97, 0x7c, 0x6, 0xd0, 0xdc, 0x2d, 0x9, 
-  0x21, 0xc6, 0x82, 0x9, 0x50, 0xee, 0xb0, 0xa2, 
-  0xfe, 0x2b, 0x2b, 0x11, 0xa5, 0x77, 0x60, 0x66, 
-  0x78, 0xfb, 0xfa, 0x66, 0xe6, 0xfb, 0x1, 0xd6
+  0x47, 0x25, 0xd2, 0xaa, 0xac, 0xf1, 0x31, 0x2d, 
+  0xe9, 0x2b, 0xbc, 0x1b, 0x7b, 0x4e, 0xd0, 0xe1, 
+  0xca, 0x68, 0x23, 0x2a, 0xf4, 0x81, 0x44, 0x15, 
+  0x7f, 0x87, 0xe9, 0xf1, 0x97, 0x14, 0xab, 0xde, 
+  0x3a, 0x7d, 0x89, 0xe6, 0x6e, 0xba, 0x13, 0x58
 };
 
 struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
@@ -2269,64 +1775,101 @@ bool rte_ether_addr_eq(void* a, void* b) ;
 uint32_t rte_ether_addr_hash(void* obj) ;
 void rte_ether_addr_allocate(void* obj) ;
 void DynamicValue_allocate(void* obj) ;
-struct MapLocks* map;
-struct VectorLocks* vector;
-struct VectorLocks* vector_1;
-struct DoubleChainLocks* dchain;
+bool StaticKey_eq(void* a, void* b) ;
+uint32_t StaticKey_hash(void* obj) ;
+void StaticKey_allocate(void* obj) ;
+RTE_DEFINE_PER_LCORE(struct Map*, _map);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
+RTE_DEFINE_PER_LCORE(struct Map*, _map_1);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector_2);
+RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
 
 bool nf_init() {
+  struct Map** map_ptr = &RTE_PER_LCORE(_map);
+  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+  struct Map** map_1_ptr = &RTE_PER_LCORE(_map_1);
+  struct Vector** vector_2_ptr = &RTE_PER_LCORE(_vector_2);
+  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
+  int map_allocation_succeeded__1 = map_allocate(rte_ether_addr_eq, rte_ether_addr_hash, spread_data_among_cores(1048576u), &(*map_ptr));
 
-  if (!(rte_get_master_lcore() == rte_lcore_id())) {
-    return 1;
-  }
-
-  int map_allocation_succeeded__1 = map_locks_allocate(rte_ether_addr_eq, rte_ether_addr_hash, 65536u, &map);
-
-  // 180
-  // 181
-  // 182
-  // 183
+  // 82
+  // 83
+  // 84
+  // 85
+  // 86
+  // 87
   if (map_allocation_succeeded__1) {
-    int vector_alloc_success__4 = vector_locks_allocate(6u, 65536u, rte_ether_addr_allocate, &vector);
+    int vector_alloc_success__4 = vector_allocate(6u, spread_data_among_cores(1048576u), rte_ether_addr_allocate, &(*vector_ptr));
 
-    // 180
-    // 181
-    // 182
+    // 82
+    // 83
+    // 84
+    // 85
+    // 86
     if (vector_alloc_success__4) {
-      int vector_alloc_success__7 = vector_locks_allocate(2u, 65536u, DynamicValue_allocate, &vector_1);
+      int vector_alloc_success__7 = vector_allocate(2u, spread_data_among_cores(1048576u), DynamicValue_allocate, &(*vector_1_ptr));
 
-      // 180
-      // 181
+      // 82
+      // 83
+      // 84
+      // 85
       if (vector_alloc_success__7) {
-        int is_dchain_allocated__10 = dchain_locks_allocate(65536u, &dchain);
+        int map_allocation_succeeded__10 = map_allocate(StaticKey_eq, StaticKey_hash, spread_data_among_cores(8192u), &(*map_1_ptr));
 
-        // 180
-        if (is_dchain_allocated__10) {
-          return 1;
+        // 82
+        // 83
+        // 84
+        if (map_allocation_succeeded__10) {
+          int vector_alloc_success__13 = vector_allocate(8u, spread_data_among_cores(8192u), StaticKey_allocate, &(*vector_2_ptr));
+
+          // 82
+          // 83
+          if (vector_alloc_success__13) {
+            int is_dchain_allocated__16 = dchain_allocate(spread_data_among_cores(1048576u), &(*dchain_ptr));
+
+            // 82
+            if (is_dchain_allocated__16) {
+              return 1;
+            }
+
+            // 83
+            else {
+              return 0;
+            } // !is_dchain_allocated__16
+
+          }
+
+          // 84
+          else {
+            return 0;
+          } // !vector_alloc_success__13
+
         }
 
-        // 181
+        // 85
         else {
           return 0;
-        } // !is_dchain_allocated__10
+        } // !map_allocation_succeeded__10
 
       }
 
-      // 182
+      // 86
       else {
         return 0;
       } // !vector_alloc_success__7
 
     }
 
-    // 183
+    // 87
     else {
       return 0;
     } // !vector_alloc_success__4
 
   }
 
-  // 184
+  // 88
   else {
     return 0;
   } // !map_allocation_succeeded__1
@@ -2334,320 +1877,82 @@ bool nf_init() {
 }
 
 int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
-  bool* write_attempt_ptr = &RTE_PER_LCORE(write_attempt);
-  bool* write_state_ptr = &RTE_PER_LCORE(write_state);
+  struct Map** map_ptr = &RTE_PER_LCORE(_map);
+  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+  struct Map** map_1_ptr = &RTE_PER_LCORE(_map_1);
+  struct Vector** vector_2_ptr = &RTE_PER_LCORE(_vector_2);
+  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
-  int number_of_freed_flows__28 = expire_items_single_map_locks(dchain, vector, map, now - 100000000000ul);
-
-  if (write_attempt_ptr[0] && (!write_state_ptr[0])) {
-    return 1;
-  }
-
-  uint8_t map_key[6];
-  map_key[0u] = ether_header_1->s_addr.addr_bytes[0ul];
-  map_key[1u] = ether_header_1->s_addr.addr_bytes[1ul];
-  map_key[2u] = ether_header_1->s_addr.addr_bytes[2ul];
-  map_key[3u] = ether_header_1->s_addr.addr_bytes[3ul];
-  map_key[4u] = ether_header_1->s_addr.addr_bytes[4ul];
-  map_key[5u] = ether_header_1->s_addr.addr_bytes[5ul];
+  uint8_t map_key[8];
+  map_key[0u] = ether_header_1->d_addr.addr_bytes[0ul];
+  map_key[1u] = ether_header_1->d_addr.addr_bytes[1ul];
+  map_key[2u] = ether_header_1->d_addr.addr_bytes[2ul];
+  map_key[3u] = ether_header_1->d_addr.addr_bytes[3ul];
+  map_key[4u] = ether_header_1->d_addr.addr_bytes[4ul];
+  map_key[5u] = ether_header_1->d_addr.addr_bytes[5ul];
+  map_key[6u] = device & 0xff;
+  map_key[7u] = (device >> 8) & 0xff;
   int map_value_out;
-  int map_has_this_key__29 = map_locks_get(map, map_key, &map_value_out);
+  int map_has_this_key__34 = map_get((*map_1_ptr), map_key, &map_value_out);
 
-  // 186
-  // 187
-  // 188
-  // 189
-  // 190
-  // 191
-  // 192
-  // 193
-  // 194
-  // 195
-  // 196
-  // 197
-  if (0u == map_has_this_key__29) {
-    uint32_t new_index__32;
-    int out_of_space__32 = !dchain_locks_allocate_new_index(dchain, &new_index__32, now);
+  // 90
+  // 91
+  // 92
+  if (0u != device) {
 
-    if (write_attempt_ptr[0] && (!write_state_ptr[0])) {
-      return 1;
-    }
+    // 90
+    // 91
+    if (map_has_this_key__34) {
 
-
-    // 186
-    // 187
-    // 188
-    // 189
-    // 190
-    // 191
-    if (false == ((out_of_space__32) & (0u == number_of_freed_flows__28))) {
-
-      if (!write_state_ptr[0]) {
-        write_attempt_ptr[0] = 1;
-        return 1;
+      // 90
+      if (map_value_out & 0xffff == device) {
+        // dropping
+        return device;
       }
 
-      uint8_t* vector_value_out = 0u;
-      vector_locks_borrow(vector, new_index__32, (void**)(&vector_value_out));
-      vector_value_out[0u] = ether_header_1->s_addr.addr_bytes[0ul];
-      vector_value_out[1u] = ether_header_1->s_addr.addr_bytes[1ul];
-      vector_value_out[2u] = ether_header_1->s_addr.addr_bytes[2ul];
-      vector_value_out[3u] = ether_header_1->s_addr.addr_bytes[3ul];
-      vector_value_out[4u] = ether_header_1->s_addr.addr_bytes[4ul];
-      vector_value_out[5u] = ether_header_1->s_addr.addr_bytes[5ul];
-
-      if (!write_state_ptr[0]) {
-        write_attempt_ptr[0] = 1;
-        return 1;
-      }
-
-      uint8_t* vector_value_out_1 = 0u;
-      vector_locks_borrow(vector_1, new_index__32, (void**)(&vector_value_out_1));
-      vector_value_out_1[0u] = device & 0xff;
-      vector_value_out_1[1u] = (device >> 8) & 0xff;
-      map_locks_put(map, vector_value_out, new_index__32);
-
-      if (write_attempt_ptr[0] && (!write_state_ptr[0])) {
-        return 1;
-      }
-
-      vector_locks_return(vector, new_index__32, vector_value_out);
-      vector_locks_return(vector_1, new_index__32, vector_value_out_1);
-      uint8_t map_key_1[6];
-      map_key_1[0u] = ether_header_1->d_addr.addr_bytes[0ul];
-      map_key_1[1u] = ether_header_1->d_addr.addr_bytes[1ul];
-      map_key_1[2u] = ether_header_1->d_addr.addr_bytes[2ul];
-      map_key_1[3u] = ether_header_1->d_addr.addr_bytes[3ul];
-      map_key_1[4u] = ether_header_1->d_addr.addr_bytes[4ul];
-      map_key_1[5u] = ether_header_1->d_addr.addr_bytes[5ul];
-      int map_value_out_1;
-      int map_has_this_key__40 = map_locks_get(map, map_key_1, &map_value_out_1);
-
-      // 186
-      // 187
-      if (0u == map_has_this_key__40) {
-
-        // 186
-        if (0u != device) {
-          return 0;
-        }
-
-        // 187
-        else {
-          return 1;
-        } // !(0u != device)
-
-      }
-
-      // 188
-      // 189
-      // 190
-      // 191
+      // 91
       else {
-        uint8_t* vector_value_out_2 = 0u;
-        vector_locks_borrow(vector_1, map_value_out_1, (void**)(&vector_value_out_2));
-        vector_locks_return(vector_1, map_value_out_1, vector_value_out_2);
-
-        // 188
-        // 189
-        if (0u != device) {
-
-          // 188
-          if (((int*)(vector_value_out_2))[0] != device) {
-            return 0;
-          }
-
-          // 189
-          else {
-            // dropping
-            return device;
-          } // !(((int*)(vector_value_out_2))[0] != device)
-
-        }
-
-        // 190
-        // 191
-        else {
-
-          // 190
-          if (((int*)(vector_value_out_2))[0]) {
-            return 1;
-          }
-
-          // 191
-          else {
-            // dropping
-            return device;
-          } // !((int*)(vector_value_out_2))[0]
-
-        } // !(0u != device)
-
-      } // !(0u == map_has_this_key__40)
+        return 0;
+      } // !(map_value_out & 0xffff == device)
 
     }
 
-    // 192
-    // 193
-    // 194
-    // 195
-    // 196
-    // 197
+    // 92
     else {
-      uint8_t map_key_1[6];
-      map_key_1[0u] = ether_header_1->d_addr.addr_bytes[0ul];
-      map_key_1[1u] = ether_header_1->d_addr.addr_bytes[1ul];
-      map_key_1[2u] = ether_header_1->d_addr.addr_bytes[2ul];
-      map_key_1[3u] = ether_header_1->d_addr.addr_bytes[3ul];
-      map_key_1[4u] = ether_header_1->d_addr.addr_bytes[4ul];
-      map_key_1[5u] = ether_header_1->d_addr.addr_bytes[5ul];
-      int map_value_out_1;
-      int map_has_this_key__85 = map_locks_get(map, map_key_1, &map_value_out_1);
-
-      // 192
-      // 193
-      if (0u == map_has_this_key__85) {
-
-        // 192
-        if (0u != device) {
-          return 0;
-        }
-
-        // 193
-        else {
-          return 1;
-        } // !(0u != device)
-
-      }
-
-      // 194
-      // 195
-      // 196
-      // 197
-      else {
-        uint8_t* vector_value_out = 0u;
-        vector_locks_borrow(vector_1, map_value_out_1, (void**)(&vector_value_out));
-        vector_locks_return(vector_1, map_value_out_1, vector_value_out);
-
-        // 194
-        // 195
-        if (0u != device) {
-
-          // 194
-          if (((int*)(vector_value_out))[0] != device) {
-            return 0;
-          }
-
-          // 195
-          else {
-            // dropping
-            return device;
-          } // !(((int*)(vector_value_out))[0] != device)
-
-        }
-
-        // 196
-        // 197
-        else {
-
-          // 196
-          if (((int*)(vector_value_out))[0]) {
-            return 1;
-          }
-
-          // 197
-          else {
-            // dropping
-            return device;
-          } // !((int*)(vector_value_out))[0]
-
-        } // !(0u != device)
-
-      } // !(0u == map_has_this_key__85)
-
-    } // !(false == ((out_of_space__32) & (0u == number_of_freed_flows__28)))
+      return 0;
+    } // !map_has_this_key__34
 
   }
 
-  // 198
-  // 199
-  // 200
-  // 201
-  // 202
-  // 203
+  // 93
+  // 94
+  // 95
   else {
-    dchain_locks_rejuvenate_index(dchain, map_value_out, now);
-    uint8_t map_key_1[6];
-    map_key_1[0u] = ether_header_1->d_addr.addr_bytes[0ul];
-    map_key_1[1u] = ether_header_1->d_addr.addr_bytes[1ul];
-    map_key_1[2u] = ether_header_1->d_addr.addr_bytes[2ul];
-    map_key_1[3u] = ether_header_1->d_addr.addr_bytes[3ul];
-    map_key_1[4u] = ether_header_1->d_addr.addr_bytes[4ul];
-    map_key_1[5u] = ether_header_1->d_addr.addr_bytes[5ul];
-    int map_value_out_1;
-    int map_has_this_key__131 = map_locks_get(map, map_key_1, &map_value_out_1);
 
-    // 198
-    // 199
-    if (0u == map_has_this_key__131) {
+    // 93
+    // 94
+    if (map_has_this_key__34) {
 
-      // 198
-      if (0u != device) {
-        return 0;
+      // 93
+      if (0u == map_value_out & 0xffff) {
+        // dropping
+        return device;
       }
 
-      // 199
+      // 94
       else {
         return 1;
-      } // !(0u != device)
+      } // !(0u == map_value_out & 0xffff)
 
     }
 
-    // 200
-    // 201
-    // 202
-    // 203
+    // 95
     else {
-      uint8_t* vector_value_out = 0u;
-      vector_locks_borrow(vector_1, map_value_out_1, (void**)(&vector_value_out));
-      vector_locks_return(vector_1, map_value_out_1, vector_value_out);
+      return 1;
+    } // !map_has_this_key__34
 
-      // 200
-      // 201
-      if (0u != device) {
-
-        // 200
-        if (((int*)(vector_value_out))[0] != device) {
-          return 0;
-        }
-
-        // 201
-        else {
-          // dropping
-          return device;
-        } // !(((int*)(vector_value_out))[0] != device)
-
-      }
-
-      // 202
-      // 203
-      else {
-
-        // 202
-        if (((int*)(vector_value_out))[0]) {
-          return 1;
-        }
-
-        // 203
-        else {
-          // dropping
-          return device;
-        } // !((int*)(vector_value_out))[0]
-
-      } // !(0u != device)
-
-    } // !(0u == map_has_this_key__131)
-
-  } // !(0u == map_has_this_key__29)
+  } // !(0u != device)
 
 }
 

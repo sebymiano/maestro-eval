@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <linux/limits.h>
 #include <sys/types.h>
 
@@ -10,7 +12,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <signal.h>
 
+#include <net/ethernet.h>
+#include <netinet/ip.h>
+#include <netinet/udp.h>
+#include <pcap.h>
+
+#include <rte_build_config.h>
 #include <rte_byteorder.h>
 #include <rte_common.h>
 #include <rte_eal.h>
@@ -19,7 +28,58 @@
 #include <rte_lcore.h>
 #include <rte_malloc.h>
 #include <rte_mbuf.h>
+#include <rte_per_lcore.h>
+#include <rte_thash.h>
+#include <rte_flow.h>
+#include <rte_version.h>
+#include <rte_build_config.h>
 
+/**********************************************
+ *
+ *         State Compute Replication
+ *
+ **********************************************/
+
+#define API_OLDEST_THAN(year, month)                                           \
+    ((defined RTE_VER_YEAR && RTE_VER_YEAR == year && defined RTE_VER_MONTH && \
+      RTE_VER_MONTH < month) ||                                                \
+     defined RTE_VER_YEAR && RTE_VER_YEAR < year)
+
+#define API_AT_LEAST_AS_RECENT_AS(year, month)                                 \
+    ((defined RTE_VER_YEAR && RTE_VER_YEAR == year && defined RTE_VER_MONTH && \
+      RTE_VER_MONTH >= month) ||                                               \
+     defined RTE_VER_YEAR && RTE_VER_YEAR >= year)
+
+#if API_AT_LEAST_AS_RECENT_AS(22, 03)
+  #define MQ_RX_NONE RTE_ETH_MQ_RX_NONE
+  #define RSS_RETA_SIZE_512 RTE_ETH_RSS_RETA_SIZE_512
+  #define RETA_GROUP_SIZE RTE_ETH_RETA_GROUP_SIZE
+  #define LCORE_FOREACH_WORKER RTE_LCORE_FOREACH_WORKER
+  #define RSS_NONFRAG_IPV4_TCP RTE_ETH_RSS_NONFRAG_IPV4_TCP
+  #define RSS_NONFRAG_IPV4_UDP RTE_ETH_RSS_NONFRAG_IPV4_UDP
+#else
+  #define MQ_RX_NONE ETH_MQ_RX_NONE
+  #define RSS_RETA_SIZE_512 ETH_RSS_RETA_SIZE_512
+  #define RETA_GROUP_SIZE RTE_RETA_GROUP_SIZE
+  #define LCORE_FOREACH_WORKER RTE_LCORE_FOREACH_SLAVE
+  #define RSS_NONFRAG_IPV4_TCP ETH_RSS_NONFRAG_IPV4_TCP
+  #define RSS_NONFRAG_IPV4_UDP ETH_RSS_NONFRAG_IPV4_UDP
+  
+#endif
+
+// Define a structure for MAC-to-queue mapping
+struct mac_to_queue_map {
+    uint8_t mac[RTE_ETHER_ADDR_LEN];
+    uint16_t queue_id;
+    struct rte_flow *flow;  // Pointer to the created flow rule
+};
+
+// Array to store MAC-to-queue mappings for each lcore
+static struct mac_to_queue_map mac_map[RTE_MAX_LCORE];
+
+struct metadata_elem {
+  uint64_t timestamp;
+} __attribute__((packed));
 
 /**********************************************
  *
@@ -112,13 +172,12 @@ static unsigned find_empty(int *busybits, int *chns, unsigned start,
   unsigned i = 0;
   for (; i < capacity; ++i) {
     unsigned index = loop(start + i, capacity);
-
     int bb = busybits[index];
     if (0 == bb) {
       return index;
     }
-    int chn = chns[index];
 
+    int chn = chns[index];
     chns[index] = chn + 1;
   }
 
@@ -144,13 +203,11 @@ int map_impl_get(int *busybits, void **keyps, unsigned *k_hashes, int *chns,
                  int *value, unsigned capacity) {
   int index =
       find_key(busybits, keyps, k_hashes, chns, keyp, eq, hash, capacity);
-
   if (-1 == index) {
     return 0;
   }
 
   *value = values[index];
-
   return 1;
 }
 
@@ -181,7 +238,6 @@ unsigned map_impl_size(int *busybits, unsigned capacity) {
       ++s;
     }
   }
-
   return s;
 }
 
@@ -920,98 +976,6 @@ uint16_t ipv4_udptcp_cksum(const struct rte_ipv4_hdr *ipv4_hdr,
   return (uint16_t)cksum;
 }
 
-#define MAX_CHT_HEIGHT 40000
-
-static uint64_t cht_loop(uint64_t k, uint64_t capacity) {
-  uint64_t g = k % capacity;
-  return g;
-}
-
-int cht_fill_cht(struct Vector *cht, uint32_t cht_height,
-                 uint32_t backend_capacity) {
-  // Generate the permutations of 0..(cht_height - 1) for each backend
-  int *permutations =
-      (int *)malloc(sizeof(int) * (int)(cht_height * backend_capacity));
-  if (permutations == 0) {
-    return 0;
-  }
-
-  for (uint32_t i = 0; i < backend_capacity; ++i) {
-    uint32_t offset_absolut = i * 31;
-    uint64_t offset = cht_loop(offset_absolut, cht_height);
-    uint64_t base_shift = cht_loop(i, cht_height - 1);
-    uint64_t shift = base_shift + 1;
-
-    for (uint32_t j = 0; j < cht_height; ++j) {
-      uint64_t permut = cht_loop(offset + shift * j, cht_height);
-      permutations[i * cht_height + j] = (int)permut;
-    }
-  }
-
-  int *next = (int *)malloc(sizeof(int) * (int)(cht_height));
-  if (next == 0) {
-    free(permutations);
-    return 0;
-  }
-
-  for (uint32_t i = 0; i < cht_height; ++i) {
-    next[i] = 0;
-  }
-
-  for (uint32_t i = 0; i < cht_height; ++i) {
-    for (uint32_t j = 0; j < backend_capacity; ++j) {
-      uint32_t *value;
-
-      uint32_t index = j * cht_height + i;
-      int bucket_id = permutations[index];
-      int priority = next[bucket_id];
-
-      next[bucket_id] += 1;
-
-      vector_borrow(cht,
-                    (int)(backend_capacity * ((uint32_t)bucket_id) +
-                          ((uint32_t)priority)),
-                    (void **)&value);
-      *value = j;
-      vector_return(cht,
-                    (int)(backend_capacity * ((uint32_t)bucket_id) +
-                          ((uint32_t)priority)),
-                    (void *)value);
-    }
-  }
-
-  // Free memory
-  free(next);
-  free(permutations);
-  return 1;
-}
-
-int cht_find_preferred_available_backend(uint64_t hash, struct Vector *cht,
-                                         struct DoubleChain *active_backends,
-                                         uint32_t cht_height,
-                                         uint32_t backend_capacity,
-                                         int *chosen_backend) {
-  uint64_t start = cht_loop(hash, cht_height);
-  for (uint32_t i = 0; i < backend_capacity; ++i) {
-    uint64_t candidate_idx =
-        start * backend_capacity +
-        i; // There was a bug, right here, untill I tried to prove this.
-
-    uint32_t *candidate;
-    vector_borrow(cht, (int)candidate_idx, (void **)&candidate);
-
-    if (dchain_is_index_allocated(active_backends, (int)*candidate)) {
-      *chosen_backend = (int)*candidate;
-      vector_return(cht, (int)candidate_idx, candidate);
-      return 1;
-    }
-
-    vector_return(cht, (int)candidate_idx, candidate);
-  }
-
-  return 0;
-}
-
 /**********************************************
  *
  *                  ETHER
@@ -1064,6 +1028,95 @@ unsigned rte_ether_addr_hash(void *obj) {
 
 /**********************************************
  *
+ *                  NF-RSS
+ *
+ **********************************************/
+
+#define MBUF_CACHE_SIZE 256
+#define RSS_HASH_KEY_LENGTH 40
+#define MAX_NUM_DEVICES 32 // this is quite arbitrary...
+
+struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
+
+struct lcore_conf {
+  struct rte_mempool *mbuf_pool;
+  uint16_t queue_id;
+};
+
+struct lcore_conf lcores_conf[RTE_MAX_LCORE];
+
+/**********************************************
+ *
+ *                  NF-UTIL
+ *
+ **********************************************/
+
+// rte_ether
+struct rte_ether_addr;
+struct rte_ether_hdr;
+
+#define IP_MIN_SIZE_WORDS 5
+#define WORD_SIZE 4
+
+// this is doing nothing here, just making compilation easier
+RTE_DEFINE_PER_LCORE(bool, write_attempt);
+RTE_DEFINE_PER_LCORE(bool, write_state);
+
+#define RETA_CONF_SIZE (RSS_RETA_SIZE_512 / RETA_GROUP_SIZE)
+
+typedef struct {
+  uint16_t lut[RSS_RETA_SIZE_512];
+  bool set;
+} reta_t;
+
+reta_t retas_per_device[MAX_NUM_DEVICES];
+
+void set_reta(uint16_t device) {
+  if (!retas_per_device[device].set) {
+    return;
+  }
+
+  struct rte_eth_rss_reta_entry64 reta_conf[RETA_CONF_SIZE];
+
+  struct rte_eth_dev_info dev_info;
+  rte_eth_dev_info_get(device, &dev_info);
+
+  /* RETA setting */
+  memset(reta_conf, 0, sizeof(reta_conf));
+
+  for (uint16_t bucket = 0; bucket < dev_info.reta_size; bucket++) {
+    reta_conf[bucket / RETA_GROUP_SIZE].mask = UINT64_MAX;
+  }
+
+  for (uint16_t bucket = 0; bucket < dev_info.reta_size; bucket++) {
+    uint32_t reta_id = bucket / RETA_GROUP_SIZE;
+    uint32_t reta_pos = bucket % RETA_GROUP_SIZE;
+    reta_conf[reta_id].reta[reta_pos] = retas_per_device[device].lut[bucket];
+  }
+
+  /* RETA update */
+  rte_eth_dev_rss_reta_update(device, reta_conf, dev_info.reta_size);
+
+  printf("Set RETA for device %u\n", device);
+}
+
+uint32_t spread_data_among_cores(uint32_t capacity) {
+  // capacity /= rte_lcore_count();
+
+  // find power of 2
+  for (int pow = 0; pow < 32; pow++) {
+      if ((1 << pow) >= capacity) {
+          return 1 << pow;
+      }
+  }
+
+  // we should not be here
+  rte_exit(EXIT_FAILURE, "Error spreading data among cores");
+  return 0; // silence warning
+}
+
+/**********************************************
+ *
  *                  NF
  *
  **********************************************/
@@ -1071,6 +1124,7 @@ unsigned rte_ether_addr_hash(void *obj) {
 bool nf_init(void);
 int nf_process(uint16_t device, uint8_t *buffer, uint16_t packet_length,
                vigor_time_t now);
+int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now);
 
 #define FLOOD_FRAME ((uint16_t)-1)
 
@@ -1085,13 +1139,13 @@ static const uint16_t TX_QUEUE_SIZE = 1024;
 static const unsigned MEMPOOL_BUFFER_COUNT = 2048;
 
 // Send the given packet to all devices except the packet's own
-void flood(struct rte_mbuf *packet, uint16_t nb_devices) {
+void flood(struct rte_mbuf *packet, uint16_t nb_devices, uint16_t queue_id) {
   rte_mbuf_refcnt_set(packet, nb_devices - 1);
   int total_sent = 0;
   uint16_t skip_device = packet->port;
   for (uint16_t device = 0; device < nb_devices; device++) {
     if (device != skip_device) {
-      total_sent += rte_eth_tx_burst(device, 0, &packet, 1);
+      total_sent += rte_eth_tx_burst(device, queue_id, &packet, 1);
     }
   }
   // should not happen, but in case we couldn't transmit, ensure the packet is
@@ -1102,38 +1156,160 @@ void flood(struct rte_mbuf *packet, uint16_t nb_devices) {
   }
 }
 
+// Function to create a flow rule for each source MAC address
+static int create_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_map, size_t mac_map_size) {
+    struct rte_flow_attr attr;
+    struct rte_flow_item pattern[2] = {0};
+    struct rte_flow_action action[2] = {0};
+    struct rte_flow_error error;
+    int retval;
+
+    // Initialize the attributes to match on incoming packets
+    memset(&attr, 0, sizeof(attr));
+    attr.ingress = 1;  // Match on ingress packets
+
+    for (size_t i = 0; i < mac_map_size; i++) {
+        // Set up the match pattern for source MAC address
+        struct rte_flow_item_eth eth_spec;
+        struct rte_flow_item_eth eth_mask;
+
+        memset(&eth_spec, 0, sizeof(eth_spec));
+        memset(&eth_mask, 0, sizeof(eth_mask));
+
+        // Specify the source MAC address to match
+        rte_memcpy(&eth_spec.src.addr_bytes, mac_map[i].mac, RTE_ETHER_ADDR_LEN);
+        memset(&eth_mask.src.addr_bytes, 0xFF, RTE_ETHER_ADDR_LEN);  // Full match on the source MAC
+
+        pattern[0].type = RTE_FLOW_ITEM_TYPE_ETH;
+        pattern[0].spec = &eth_spec;
+        pattern[0].mask = &eth_mask;
+        pattern[0].last = NULL;
+        pattern[1].type = RTE_FLOW_ITEM_TYPE_END;
+
+        // Define the action to direct the packet to a specific RX queue
+        struct rte_flow_action_queue queue = {
+            .index = mac_map[i].queue_id
+        };
+
+        action[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
+        action[0].conf = &queue;
+        action[1].type = RTE_FLOW_ACTION_TYPE_END;
+
+        printf("Validaing flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
+               mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+               mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5]);
+        // Validate the flow rule
+        retval = rte_flow_validate(port_id, &attr, pattern, action, &error);
+        if (retval != 0) {
+            fprintf(stderr, "Error validating flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X %s\n",
+                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
+                    error.message);
+            return -1;
+        }
+
+        // Create the flow rule
+        struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern, action, &error);
+        if (!flow) {
+            fprintf(stderr, "Error creating flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X: %s\n",
+                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
+                    error.message);
+            return -1; 
+        } else {
+            mac_map[i].flow = flow;  // Store the flow pointer
+            printf("Created flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X directing to queue %d\n",
+                   mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+                   mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
+                   mac_map[i].queue_id);
+        }
+    }
+    return 0;
+}
+
+// Function to destroy all flow rules created by create_mac_filter
+static void destroy_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_map, size_t mac_map_size) {
+    struct rte_flow_error error;
+
+    for (size_t i = 0; i < mac_map_size; i++) {
+        if (mac_map[i].flow) {
+            printf("Destroying flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
+                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5]);
+            int retval = rte_flow_destroy(port_id, mac_map[i].flow, &error);
+            if (retval != 0) {
+                fprintf(stderr, "Error destroying flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X: %s\n",
+                        mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
+                        mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
+                        error.message);
+            } else {
+                mac_map[i].flow = NULL;  // Clear the flow pointer after destruction
+            }
+        }
+    }
+}
+
 // Initializes the given device using the given memory pool
-static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
+static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   int retval;
+  const uint16_t num_queues = rte_lcore_count();
 
-  // device_conf passed to rte_eth_dev_configure cannot be NULL
-  struct rte_eth_conf device_conf = { 0 };
-  // device_conf.rxmode.hw_strip_crc = 1;
+  struct rte_eth_conf device_conf = {0};
 
-  // Configure the device (1, 1 == number of RX/TX queues)
-  retval = rte_eth_dev_configure(device, 1, 1, &device_conf);
+  // Disable RSS to use only flow rules
+  device_conf.rxmode.mq_mode = MQ_RX_NONE;
+
+  retval = rte_eth_dev_configure(device, num_queues, num_queues, &device_conf);
   if (retval != 0) {
     return retval;
   }
 
-  // Allocate and set up a TX queue (NULL == default config)
-  retval = rte_eth_tx_queue_setup(device, 0, TX_QUEUE_SIZE,
-                                  rte_eth_dev_socket_id(device), NULL);
-  if (retval != 0) {
-    return retval;
+  // Allocate and set up TX queues
+  for (int txq = 0; txq < num_queues; txq++) {
+    retval = rte_eth_tx_queue_setup(device, txq, TX_QUEUE_SIZE,
+                                    rte_eth_dev_socket_id(device), NULL);
+    if (retval != 0) {
+      return retval;
+    }
   }
 
-  // Allocate and set up RX queues (NULL == default config)
-  retval = rte_eth_rx_queue_setup(
-      device, 0, RX_QUEUE_SIZE, rte_eth_dev_socket_id(device), NULL, mbuf_pool);
-  if (retval != 0) {
-    return retval;
+  unsigned lcore_id;
+  int rxq = 0;
+  RTE_LCORE_FOREACH(lcore_id) {
+    printf("Setting up RX queue %d for lcore %u\n", rxq, lcore_id);
+    mac_map[rxq].mac[0] = 0x10;
+    mac_map[rxq].mac[1] = 0x10;
+    mac_map[rxq].mac[2] = 0x10;
+    mac_map[rxq].mac[3] = 0x10;
+    mac_map[rxq].mac[4] = 0x10;
+    mac_map[rxq].mac[5] = (uint8_t)(rxq);  // XX is 1, 2, 3, etc.
+
+    lcores_conf[lcore_id].queue_id = rxq;
+    mac_map[rxq].queue_id = rxq;
+
+
+    retval = rte_eth_rx_queue_setup(device, rxq, RX_QUEUE_SIZE,
+                                    rte_eth_dev_socket_id(device), NULL,
+                                    mbuf_pools[rxq]);
+    if (retval != 0) {
+      fprintf(stderr, "Error setting up RX queue %d for device %d: %s\n",
+              rxq, device, rte_strerror(retval));
+      return retval;
+    }
+
+    rxq++;
   }
 
   // Start the device
   retval = rte_eth_dev_start(device);
   if (retval != 0) {
     return retval;
+  }
+
+  // Create MAC-based filtering rules
+  retval = create_mac_filter(device, mac_map, rxq);
+  if (retval != 0) {
+      return retval;
   }
 
   // Enable RX in promiscuous mode, just in case
@@ -1145,56 +1321,515 @@ static int nf_init_device(uint16_t device, struct rte_mempool *mbuf_pool) {
   return 0;
 }
 
-// Main worker method (for now used on a single thread...)
 static void worker_main(void) {
+  const unsigned lcore_id = rte_lcore_id();
+  const uint16_t queue_id = lcores_conf[lcore_id].queue_id;
+
   if (!nf_init()) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
   }
 
   printf("Core %u forwarding packets.\n", rte_lcore_id());
 
+  const unsigned int NUM_CORES = rte_lcore_count();
+  printf("Number of cores for SCR: %d\n", NUM_CORES);
+
   if (rte_eth_dev_count_avail() != 2) {
-    printf("We assume there will be exactly 2 devices for our simple batching "
-           "implementation.\n");
-    exit(1);
+    rte_exit(EXIT_FAILURE, "We assume there will be exactly 2 devices.");
   }
-  printf("Running with batches, this code is unverified!\n");
 
   while (1) {
     unsigned VIGOR_DEVICES_COUNT = rte_eth_dev_count_avail();
+
     for (uint16_t VIGOR_DEVICE = 0; VIGOR_DEVICE < VIGOR_DEVICES_COUNT;
          VIGOR_DEVICE++) {
       struct rte_mbuf *mbufs[VIGOR_BATCH_SIZE];
       uint16_t rx_count =
-          rte_eth_rx_burst(VIGOR_DEVICE, 0, mbufs, VIGOR_BATCH_SIZE);
+          rte_eth_rx_burst(VIGOR_DEVICE, queue_id, mbufs, VIGOR_BATCH_SIZE);
 
       struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];
       uint16_t tx_count = 0;
+
       for (uint16_t n = 0; n < rx_count; n++) {
         uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
         vigor_time_t VIGOR_NOW = current_time();
-        uint16_t dst_device =
-            nf_process(mbufs[n]->port, data, mbufs[n]->pkt_len, VIGOR_NOW);
+        
+        /* This is the part related to SCR */
+        int dummy_header_size = sizeof(struct ethhdr);
+        int md_offset = dummy_header_size;
+        struct metadata_elem *md;
+        uint8_t *md_start = data + md_offset;
+        uint64_t md_size = (NUM_CORES - 1) * sizeof(struct metadata_elem);
+        uint64_t offset = 0;
+
+        if (md_start + md_size > (data + mbufs[n]->data_len)) {
+          printf("Error: We requested %lu metadata from a packet with len: %d\n", md_size, mbufs[n]->data_len);
+          continue;
+        }
+
+        for (int i = 0; i < NUM_CORES - 1; i++) {
+          md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
+
+          nf_process_scr(mbufs[n]->port, md, md->timestamp);
+          VIGOR_NOW = md->timestamp + 10;
+        }
+
+        offset = dummy_header_size + md_size;
+        uint8_t *current_pkt_data = data + offset;
+        
+        uint16_t dst_device = nf_process(mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
 
         if (dst_device == VIGOR_DEVICE) {
           rte_pktmbuf_free(mbufs[n]);
-        } else { // includes flood when 2 devices, which is equivalent to just
-                 // a
-                 // send
-          
+        } else if (dst_device == FLOOD_FRAME) {
+          flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
+        } else {
+          // offset = dummy_header_size + md_size;
+          // Remove the metadata section from the packet
+          // if (unlikely(rte_pktmbuf_adj(mbufs[n], offset) == NULL)) {
+          //   // If adjusting the mbuf fails, free the packet and continue
+          //   printf("Error: Unable to adjust mbuf to remove metadata\n");
+          //   rte_pktmbuf_free(mbufs[n]);
+          //   continue;
+          // }
+
           mbufs_to_send[tx_count] = mbufs[n];
           tx_count++;
         }
       }
 
       uint16_t sent_count =
-          rte_eth_tx_burst(1 - VIGOR_DEVICE, 0, mbufs_to_send, tx_count);
+          rte_eth_tx_burst(1 - VIGOR_DEVICE, queue_id, mbufs_to_send, tx_count);
       for (uint16_t n = sent_count; n < tx_count; n++) {
         rte_pktmbuf_free(mbufs[n]); // should not happen, but we're in the
                                     // unverified case anyway
       }
     }
   }
+}
+
+struct args_t {
+  char *pcap_fname;
+  bool valid_pcap;
+};
+
+struct args_t app_parse_args(int argc, char **argv) {
+  struct args_t args;
+
+  args.valid_pcap = false;
+
+  if (argc <= 1) {
+    return args;
+  }
+
+  args.pcap_fname = argv[1];
+  args.valid_pcap = true;
+  return args;
+}
+
+struct pcap_pkt_hdr_t {
+  struct ether_header eth_hdr;
+  struct iphdr ip_hdr;
+  struct udphdr udp_hdr;
+} __attribute__((packed));
+
+struct rss_bucket_t {
+  uint16_t id;
+  uint64_t counter;
+};
+
+struct rss_buckets_t {
+  uint16_t num_buckets;
+  struct rss_bucket_t buckets[RSS_RETA_SIZE_512];
+};
+
+struct rss_core_t {
+  uint16_t id;
+  uint64_t total_counter;
+  struct rss_buckets_t buckets;
+};
+
+struct rss_cores_t {
+  uint16_t num_cores;
+  struct rss_core_t cores[RTE_MAX_LCORE];
+};
+
+struct rss_cores_groups_t {
+  uint64_t counter_goal;
+
+  uint16_t num_underloaded;
+  uint16_t underloaded[RTE_MAX_LCORE];
+
+  uint16_t num_overloaded;
+  uint16_t overloaded[RTE_MAX_LCORE];
+};
+
+int cmp_cores_increasing(const void *a, const void *b, void *args) {
+  struct rss_cores_t *cores = (struct rss_cores_t *)args;
+
+  uint16_t *core1 = (uint16_t *)a;
+  uint16_t *core2 = (uint16_t *)b;
+
+  uint64_t counter1 = cores->cores[*core1].total_counter;
+  uint64_t counter2 = cores->cores[*core2].total_counter;
+
+  return counter1 - counter2;
+}
+
+int cmp_buckets_increasing(const void *a, const void *b) {
+  struct rss_bucket_t *bucket1 = (struct rss_bucket_t *)a;
+  struct rss_bucket_t *bucket2 = (struct rss_bucket_t *)b;
+
+  return bucket1->counter - bucket2->counter;
+}
+
+int cmp_buckets_decreasing(const void *a, const void *b) {
+  return -1 * cmp_buckets_increasing(a, b);
+}
+
+int cmp_cores_decreasing(const void *a, const void *b, void *args) {
+  return -1 * cmp_cores_increasing(a, b, args);
+}
+
+void rss_lut_balancer_init_buckets(struct rss_buckets_t *buckets) {
+  buckets->num_buckets = RSS_RETA_SIZE_512;
+  for (int b = 0; b < buckets->num_buckets; b++) {
+    buckets->buckets[b].id = b;
+    buckets->buckets[b].counter = 0;
+  }
+}
+
+void rss_lut_balancer_init_lut(unsigned device) {
+  int num_cores = rte_lcore_count();
+
+  // Set LUT default values.
+  retas_per_device[device].set = true;
+  for (int b = 0; b < RSS_RETA_SIZE_512; b++) {
+    retas_per_device[device].lut[b] = b % num_cores;
+  }
+}
+
+void rss_lut_balancer_init_cores(unsigned device, struct rss_buckets_t buckets,
+                                 struct rss_cores_t *cores) {
+  cores->num_cores = rte_lcore_count();
+  for (int c = 0; c < cores->num_cores; c++) {
+    cores->cores[c].id = c;
+    cores->cores[c].total_counter = 0;
+    cores->cores[c].buckets.num_buckets = 0;
+  }
+
+  // Group bucket counters by core.
+  for (int b = 0; b < buckets.num_buckets; b++) {
+    struct rss_bucket_t bucket = buckets.buckets[b];
+
+    uint16_t chosen_core = retas_per_device[device].lut[bucket.id];
+    uint16_t num_buckets = cores->cores[chosen_core].buckets.num_buckets;
+
+    cores->cores[chosen_core].buckets.buckets[num_buckets] = bucket;
+    cores->cores[chosen_core].buckets.num_buckets++;
+
+    cores->cores[chosen_core].total_counter += bucket.counter;
+  }
+}
+
+void rss_lut_balancer_get_core_groups(struct rss_cores_t cores,
+                                      struct rss_cores_groups_t *core_groups) {
+  uint64_t total_counter = 0;
+
+  for (int c = 0; c < cores.num_cores; c++) {
+    total_counter += cores.cores[c].total_counter;
+  }
+
+  core_groups->counter_goal =
+      (uint64_t)((double)total_counter / (double)cores.num_cores);
+  core_groups->num_overloaded = 0;
+  core_groups->num_underloaded = 0;
+
+  for (int c = 0; c < cores.num_cores; c++) {
+    if (cores.cores[c].total_counter > core_groups->counter_goal) {
+      core_groups->overloaded[core_groups->num_overloaded] = c;
+      core_groups->num_overloaded++;
+    } else {
+      core_groups->underloaded[core_groups->num_underloaded] = c;
+      core_groups->num_underloaded++;
+    }
+  }
+}
+
+void rss_lut_balancer_sort(struct rss_cores_t *cores,
+                           struct rss_cores_groups_t *core_groups) {
+  for (int c = 0; c < cores->num_cores; c++) {
+    qsort(cores->cores[c].buckets.buckets, cores->cores[c].buckets.num_buckets,
+          sizeof(struct rss_bucket_t), cmp_buckets_decreasing);
+  }
+
+  qsort_r(core_groups->underloaded, core_groups->num_underloaded,
+          sizeof(uint16_t), cmp_cores_increasing, cores);
+  qsort_r(core_groups->overloaded, core_groups->num_overloaded,
+          sizeof(uint16_t), cmp_cores_decreasing, cores);
+}
+
+bool rss_lut_balancer_migrate_bucket(struct rss_cores_t *cores,
+                                     struct rss_cores_groups_t *core_groups,
+                                     uint16_t bucket_idx, uint16_t src_core,
+                                     uint16_t dst_core) {
+  struct rss_bucket_t *bucket =
+      &cores->cores[src_core].buckets.buckets[bucket_idx];
+
+  uint16_t src_num_buckets = cores->cores[src_core].buckets.num_buckets;
+  uint16_t dst_num_buckets = cores->cores[dst_core].buckets.num_buckets;
+
+  if (src_num_buckets == 1 || dst_num_buckets == RSS_RETA_SIZE_512) {
+    return false;
+  }
+
+  // Update the total counters.
+  cores->cores[dst_core].total_counter += bucket->counter;
+  cores->cores[src_core].total_counter -= bucket->counter;
+
+  // Append to tail.
+  cores->cores[dst_core].buckets.buckets[dst_num_buckets] = *bucket;
+  cores->cores[dst_core].buckets.num_buckets++;
+
+  // Pull the tail bucket to fill the place of the leaving one.
+  *bucket = cores->cores[src_core].buckets.buckets[src_num_buckets - 1];
+  cores->cores[src_core].buckets.num_buckets--;
+
+  return true;
+}
+
+bool rss_lut_balancer_balance_groups(struct rss_cores_t *cores,
+                                     struct rss_cores_groups_t *core_groups,
+                                     bool allow_big_atom_migration) {
+  bool changes = false;
+
+  for (int over_idx = 0; over_idx < core_groups->num_overloaded; over_idx++) {
+    uint16_t overloaded_core = core_groups->overloaded[over_idx];
+    int bucket_idx = 0;
+    int under_idx = 0;
+
+    // Keep going until the overload core becomes underloaded.
+    while (cores->cores[overloaded_core].total_counter >
+           core_groups->counter_goal) {
+      // No more buckets to move.
+      if (cores->cores[overloaded_core].buckets.num_buckets < 2 ||
+          bucket_idx >= cores->cores[overloaded_core].buckets.num_buckets) {
+        break;
+      }
+
+      // No more underloaded available cores.
+      if (under_idx >= core_groups->num_underloaded) {
+        break;
+      }
+
+      uint16_t underloaded_core = core_groups->underloaded[under_idx];
+      uint64_t load =
+          cores->cores[overloaded_core].buckets.buckets[bucket_idx].counter;
+
+      // Is the load on this bucket alone bigger than the target?
+      bool is_big_atom = load > core_groups->counter_goal;
+
+      if (is_big_atom && allow_big_atom_migration) {
+        // This will overload, but we only overload one underloaded core at a
+        // time.
+        bool success = rss_lut_balancer_migrate_bucket(
+            cores, core_groups, bucket_idx, overloaded_core, underloaded_core);
+        if (success) {
+          bucket_idx++;
+          changes = true;
+        }
+
+        under_idx++;
+        continue;
+      }
+
+      // Underloaded core would become an overloaded core.
+      // Let's see if the next one is available to receive this load.
+      bool will_overload = cores->cores[underloaded_core].total_counter + load >
+                           core_groups->counter_goal;
+
+      if (will_overload) {
+        under_idx++;
+        continue;
+      }
+
+      rss_lut_balancer_migrate_bucket(cores, core_groups, bucket_idx,
+                                      overloaded_core, underloaded_core);
+      changes = true;
+    }
+  }
+
+  return changes;
+}
+
+void rss_lut_balancer_balance_elephants(struct rss_cores_t *cores) {
+  struct rss_cores_groups_t core_groups;
+  rss_lut_balancer_get_core_groups(*cores, &core_groups);
+
+  qsort_r(core_groups.underloaded, core_groups.num_underloaded,
+          sizeof(uint16_t), cmp_cores_increasing, cores);
+  qsort_r(core_groups.overloaded, core_groups.num_overloaded, sizeof(uint16_t),
+          cmp_cores_decreasing, cores);
+
+  for (int c = 0; c < cores->num_cores; c++) {
+    qsort(cores->cores[c].buckets.buckets, cores->cores[c].buckets.num_buckets,
+          sizeof(struct rss_bucket_t), cmp_buckets_decreasing);
+  }
+
+  rss_lut_balancer_balance_groups(cores, &core_groups, true);
+}
+
+void rss_lut_balancer_balance_mice(struct rss_cores_t *cores) {
+  struct rss_cores_groups_t core_groups;
+
+  while (true) {
+    rss_lut_balancer_get_core_groups(*cores, &core_groups);
+
+    qsort_r(core_groups.underloaded, core_groups.num_underloaded,
+            sizeof(uint16_t), cmp_cores_increasing, cores);
+    qsort_r(core_groups.overloaded, core_groups.num_overloaded,
+            sizeof(uint16_t), cmp_cores_decreasing, cores);
+
+    for (int c = 0; c < cores->num_cores; c++) {
+      qsort(cores->cores[c].buckets.buckets,
+            cores->cores[c].buckets.num_buckets, sizeof(struct rss_bucket_t),
+            cmp_buckets_increasing);
+    }
+
+    if (!rss_lut_balancer_balance_groups(cores, &core_groups, false)) {
+      break;
+    }
+  }
+}
+
+void rss_lut_balancer_print_cores(struct rss_cores_t cores) {
+  struct rss_cores_groups_t core_groups;
+  rss_lut_balancer_get_core_groups(cores, &core_groups);
+  rss_lut_balancer_sort(&cores, &core_groups);
+
+  const int NUM_BUCKETS_SHOWN = 3;
+
+  printf("======================= LUT BALANCING =======================\n");
+  printf("Goal: %lu\n", core_groups.counter_goal);
+
+  printf("Overloaded:\n");
+  for (int c = 0; c < core_groups.num_overloaded; c++) {
+    struct rss_core_t core = cores.cores[core_groups.overloaded[c]];
+    printf("  Core %2d: %9lu", core.id, core.total_counter);
+
+    printf(", #buckets: %3u", core.buckets.num_buckets);
+    printf(", buckets: [");
+    for (int i = 0; i < core.buckets.num_buckets; i++) {
+      if (i < NUM_BUCKETS_SHOWN) {
+        printf("{bucket:%3u, pkts:%8lu},", core.buckets.buckets[i].id,
+               core.buckets.buckets[i].counter);
+      } else {
+        printf("...");
+        break;
+      }
+    }
+    printf("]\n");
+  }
+
+  printf("Underloaded:\n");
+  for (int c = 0; c < core_groups.num_underloaded; c++) {
+    struct rss_core_t core = cores.cores[core_groups.underloaded[c]];
+    printf("  Core %2d: %9lu", core.id, core.total_counter);
+
+    printf(", #buckets: %3u", core.buckets.num_buckets);
+    printf(", buckets: [");
+    for (int i = 0; i < core.buckets.num_buckets; i++) {
+      if (i < NUM_BUCKETS_SHOWN) {
+        printf("{bucket:%3u, pkts:%8lu},", core.buckets.buckets[i].id,
+               core.buckets.buckets[i].counter);
+      } else {
+        printf("...");
+        break;
+      }
+    }
+    printf("]\n");
+  }
+  printf("================================================================\n");
+}
+
+struct rss_buckets_t rss_lut_buckets_from_pcap(unsigned device,
+                                               const char *pcap_fname) {
+  char errbuff[PCAP_ERRBUF_SIZE];
+  uint64_t pkt_counter = 0;
+
+  pcap_t *pcap = pcap_open_offline(pcap_fname, errbuff);
+
+  if (pcap == NULL) {
+    rte_exit(EXIT_FAILURE, "Error opening pcap: %s", errbuff);
+  }
+
+  struct pcap_pkthdr *header;
+  const u_char *data;
+
+  uint8_t key[RSS_HASH_KEY_LENGTH];
+  rte_convert_rss_key((uint32_t *)rss_conf[device].rss_key, (uint32_t *)key,
+                      rss_conf[device].rss_key_len);
+
+  struct rss_buckets_t buckets;
+  rss_lut_balancer_init_buckets(&buckets);
+
+  while (pcap_next_ex(pcap, &header, &data) >= 0) {
+    pkt_counter++;
+
+    const struct pcap_pkt_hdr_t *pkt = (const struct pcap_pkt_hdr_t *)data;
+
+    union rte_thash_tuple tuple;
+    tuple.v4.src_addr = rte_be_to_cpu_32(pkt->ip_hdr.saddr);
+    tuple.v4.dst_addr = rte_be_to_cpu_32(pkt->ip_hdr.daddr);
+    tuple.v4.sport = rte_be_to_cpu_16(pkt->udp_hdr.uh_sport);
+    tuple.v4.dport = rte_be_to_cpu_16(pkt->udp_hdr.uh_dport);
+
+    uint32_t hash =
+        rte_softrss_be((uint32_t *)&tuple, RTE_THASH_V4_L4_LEN, key);
+
+    // As per X710/e810
+    int chosen_bucket = hash & 0x1ff;
+    assert(chosen_bucket < RSS_RETA_SIZE_512);
+    assert(buckets.buckets[chosen_bucket].id == chosen_bucket);
+    buckets.buckets[chosen_bucket].counter++;
+  }
+
+  return buckets;
+}
+
+void rss_lut_balance(unsigned device, const char *pcap_fname) {
+  struct rss_buckets_t buckets = rss_lut_buckets_from_pcap(device, pcap_fname);
+
+  struct rss_cores_t cores;
+  rss_lut_balancer_init_cores(device, buckets, &cores);
+
+  printf("Before:\n");
+  rss_lut_balancer_print_cores(cores);
+
+  rss_lut_balancer_balance_elephants(&cores);
+  rss_lut_balancer_balance_mice(&cores);
+
+  rss_lut_balancer_balance_elephants(&cores);
+  rss_lut_balancer_balance_mice(&cores);
+
+  printf("After:\n");
+  rss_lut_balancer_print_cores(cores);
+
+  // Finally, configure the LUTs
+  for (int c = 0; c < cores.num_cores; c++) {
+    struct rss_core_t core = cores.cores[c];
+
+    for (int b = 0; b < cores.cores[c].buckets.num_buckets; b++) {
+      struct rss_bucket_t bucket = core.buckets.buckets[b];
+      retas_per_device[device].lut[bucket.id] = core.id;
+    }
+  }
+}
+
+static void signal_handler(int signum) {
+  printf("Received signal %d, exiting...\n", signum);
+  destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
+  exit(0);
 }
 
 // Entry point
@@ -1207,395 +1842,121 @@ int main(int argc, char **argv) {
   argc -= ret;
   argv += ret;
 
+  struct args_t args = app_parse_args(argc, argv);
+
   // Create a memory pool
   unsigned nb_devices = rte_eth_dev_count_avail();
-  struct rte_mempool *mbuf_pool = rte_pktmbuf_pool_create(
-      "MEMPOOL",                         // name
-      MEMPOOL_BUFFER_COUNT * nb_devices, // #elements
-      0, // cache size (per-core, not useful in a single-threaded app)
-      0, // application private area size
-      RTE_MBUF_DEFAULT_BUF_SIZE, // data buffer size
-      rte_socket_id()            // socket ID
-  );
-  if (mbuf_pool == NULL) {
-    rte_exit(EXIT_FAILURE, "Cannot create pool: %s\n", rte_strerror(rte_errno));
+
+  char MBUF_POOL_NAME[20];
+  struct rte_mempool **mbuf_pools;
+  mbuf_pools = (struct rte_mempool **)rte_malloc(
+      NULL, sizeof(struct rte_mempool *) * rte_lcore_count(), 64);
+
+  unsigned lcore_id;
+  unsigned lcore_idx = 0;
+  RTE_LCORE_FOREACH(lcore_id) {
+    sprintf(MBUF_POOL_NAME, "MEMORY_POOL_%u", lcore_idx);
+
+    mbuf_pools[lcore_idx] =
+        rte_pktmbuf_pool_create(MBUF_POOL_NAME,                    // name
+                                MEMPOOL_BUFFER_COUNT * nb_devices, // #elements
+                                MBUF_CACHE_SIZE, // cache size (per-lcore)
+                                0, // application private area size
+                                RTE_MBUF_DEFAULT_BUF_SIZE, // data buffer size
+                                rte_socket_id()            // socket ID
+        );
+
+    if (mbuf_pools[lcore_idx] == NULL) {
+      rte_exit(EXIT_FAILURE, "Cannot create mbuf pool: %s\n",
+               rte_strerror(rte_errno));
+    }
+
+    lcore_idx++;
   }
 
   // Initialize all devices
   for (uint16_t device = 0; device < nb_devices; device++) {
-    ret = nf_init_device(device, mbuf_pool);
+    ret = nf_init_device(device, mbuf_pools);
     if (ret == 0) {
       printf("Initialized device %" PRIu16 ".\n", device);
     } else {
+      destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
       rte_exit(EXIT_FAILURE, "Cannot init device %" PRIu16 ": %d", device, ret);
     }
   }
 
-  // Run!
+  signal(SIGINT, signal_handler);
+  signal(SIGTERM, signal_handler);
+  signal(SIGKILL, signal_handler);
+
+  LCORE_FOREACH_WORKER(lcore_id) {
+    printf("lauching worker on core %u\n", lcore_id);
+    rte_eal_remote_launch((lcore_function_t *)worker_main, NULL, lcore_id);
+  }
+
+  printf("Launching also worker thread. \n");
   worker_main();
 
+  destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
   return 0;
 }
 
-struct DynamicValue {
-  uint16_t device;
+
+uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
+  0x86, 0x5, 0x7b, 0x82, 0x79, 0xcb, 0x1c, 0xee, 
+  0x1e, 0xb4, 0xbd, 0x6b, 0x63, 0x71, 0xeb, 0x2a, 
+  0x4a, 0x31, 0xa3, 0x4c, 0x81, 0x81, 0x5f, 0xb1, 
+  0x49, 0x4b, 0x80, 0xfa, 0x12, 0xc2, 0x13, 0x98, 
+  0xc7, 0x8e, 0x1a, 0x40, 0x59, 0x36, 0x2e, 0x78
 };
-void DynamicValue_allocate(void* obj) {
-  struct DynamicValue *id = (struct DynamicValue *)obj;
-  id->device = 0;
-}
+uint8_t hash_key_1[RSS_HASH_KEY_LENGTH] = {
+  0xe2, 0x8d, 0xf8, 0xd5, 0x70, 0x6a, 0xd0, 0xea, 
+  0xcc, 0x8f, 0xbf, 0xf0, 0xe8, 0x7c, 0x49, 0xf2, 
+  0x2e, 0xac, 0x4b, 0x29, 0xbd, 0x6a, 0xac, 0x25, 
+  0xa0, 0x65, 0xcc, 0x49, 0xa2, 0x43, 0x7f, 0x85, 
+  0xd0, 0x77, 0x5a, 0x40, 0xe2, 0x2a, 0x2a, 0xae
+};
 
-
-
-bool rte_ether_addr_eq(void* a, void* b) ;
-uint32_t rte_ether_addr_hash(void* obj) ;
-void rte_ether_addr_allocate(void* obj) ;
-void DynamicValue_allocate(void* obj) ;
-struct Map* map;
-struct Vector* vector;
-struct Vector* vector_1;
-struct DoubleChain* dchain;
+struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
+  {
+    .rss_key = hash_key_0,
+    .rss_key_len = RSS_HASH_KEY_LENGTH,
+    .rss_hf = RSS_NONFRAG_IPV4_TCP | RSS_NONFRAG_IPV4_UDP
+  },
+  {
+    .rss_key = hash_key_1,
+    .rss_key_len = RSS_HASH_KEY_LENGTH,
+    .rss_hf = RSS_NONFRAG_IPV4_TCP | RSS_NONFRAG_IPV4_UDP
+  }
+};
 
 bool nf_init() {
-  int map_allocation_succeeded__1 = map_allocate(rte_ether_addr_eq, rte_ether_addr_hash, 65536u, &map);
+  return 1;
+}
 
-  // 180
-  // 181
-  // 182
-  // 183
-  if (map_allocation_succeeded__1) {
-    int vector_alloc_success__4 = vector_allocate(6u, 65536u, rte_ether_addr_allocate, &vector);
-
-    // 180
-    // 181
-    // 182
-    if (vector_alloc_success__4) {
-      int vector_alloc_success__7 = vector_allocate(2u, 65536u, DynamicValue_allocate, &vector_1);
-
-      // 180
-      // 181
-      if (vector_alloc_success__7) {
-        int is_dchain_allocated__10 = dchain_allocate(65536u, &dchain);
-
-        // 180
-        if (is_dchain_allocated__10) {
-          return 1;
-        }
-
-        // 181
-        else {
-          return 0;
-        } // !is_dchain_allocated__10
-
-      }
-
-      // 182
-      else {
-        return 0;
-      } // !vector_alloc_success__7
-
-    }
-
-    // 183
-    else {
-      return 0;
-    } // !vector_alloc_success__4
-
+int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now) {
+  // 29
+  if (0u != device) {
+    return 0;
   }
 
-  // 184
+  // 30
   else {
-    return 0;
-  } // !map_allocation_succeeded__1
-
+    return 1;
+  } // !(0u != device)
 }
 
 int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
-  struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
-  int number_of_freed_flows__28 = expire_items_single_map(dchain, vector, map, now - 100000000000ul);
-  uint8_t map_key[6];
-  map_key[0u] = ether_header_1->s_addr.addr_bytes[0ul];
-  map_key[1u] = ether_header_1->s_addr.addr_bytes[1ul];
-  map_key[2u] = ether_header_1->s_addr.addr_bytes[2ul];
-  map_key[3u] = ether_header_1->s_addr.addr_bytes[3ul];
-  map_key[4u] = ether_header_1->s_addr.addr_bytes[4ul];
-  map_key[5u] = ether_header_1->s_addr.addr_bytes[5ul];
-  int map_value_out;
-  int map_has_this_key__29 = map_get(map, map_key, &map_value_out);
 
-  // 186
-  // 187
-  // 188
-  // 189
-  // 190
-  // 191
-  // 192
-  // 193
-  // 194
-  // 195
-  // 196
-  // 197
-  if (0u == map_has_this_key__29) {
-    uint32_t new_index__32;
-    int out_of_space__32 = !dchain_allocate_new_index(dchain, &new_index__32, now);
-
-    // 186
-    // 187
-    // 188
-    // 189
-    // 190
-    // 191
-    if (false == ((out_of_space__32) & (0u == number_of_freed_flows__28))) {
-      uint8_t* vector_value_out = 0u;
-      vector_borrow(vector, new_index__32, (void**)(&vector_value_out));
-      vector_value_out[0u] = ether_header_1->s_addr.addr_bytes[0ul];
-      vector_value_out[1u] = ether_header_1->s_addr.addr_bytes[1ul];
-      vector_value_out[2u] = ether_header_1->s_addr.addr_bytes[2ul];
-      vector_value_out[3u] = ether_header_1->s_addr.addr_bytes[3ul];
-      vector_value_out[4u] = ether_header_1->s_addr.addr_bytes[4ul];
-      vector_value_out[5u] = ether_header_1->s_addr.addr_bytes[5ul];
-      uint8_t* vector_value_out_1 = 0u;
-      vector_borrow(vector_1, new_index__32, (void**)(&vector_value_out_1));
-      vector_value_out_1[0u] = device & 0xff;
-      vector_value_out_1[1u] = (device >> 8) & 0xff;
-      map_put(map, vector_value_out, new_index__32);
-      vector_return(vector, new_index__32, vector_value_out);
-      vector_return(vector_1, new_index__32, vector_value_out_1);
-      uint8_t map_key_1[6];
-      map_key_1[0u] = ether_header_1->d_addr.addr_bytes[0ul];
-      map_key_1[1u] = ether_header_1->d_addr.addr_bytes[1ul];
-      map_key_1[2u] = ether_header_1->d_addr.addr_bytes[2ul];
-      map_key_1[3u] = ether_header_1->d_addr.addr_bytes[3ul];
-      map_key_1[4u] = ether_header_1->d_addr.addr_bytes[4ul];
-      map_key_1[5u] = ether_header_1->d_addr.addr_bytes[5ul];
-      int map_value_out_1;
-      int map_has_this_key__40 = map_get(map, map_key_1, &map_value_out_1);
-
-      // 186
-      // 187
-      if (0u == map_has_this_key__40) {
-
-        // 186
-        if (0u != device) {
-          return 0;
-        }
-
-        // 187
-        else {
-          return 1;
-        } // !(0u != device)
-
-      }
-
-      // 188
-      // 189
-      // 190
-      // 191
-      else {
-        uint8_t* vector_value_out_2 = 0u;
-        vector_borrow(vector_1, map_value_out_1, (void**)(&vector_value_out_2));
-        vector_return(vector_1, map_value_out_1, vector_value_out_2);
-
-        // 188
-        // 189
-        if (0u != device) {
-
-          // 188
-          if (((int*)(vector_value_out_2))[0] != device) {
-            return 0;
-          }
-
-          // 189
-          else {
-            // dropping
-            return device;
-          } // !(((int*)(vector_value_out_2))[0] != device)
-
-        }
-
-        // 190
-        // 191
-        else {
-
-          // 190
-          if (((int*)(vector_value_out_2))[0]) {
-            return 1;
-          }
-
-          // 191
-          else {
-            // dropping
-            return device;
-          } // !((int*)(vector_value_out_2))[0]
-
-        } // !(0u != device)
-
-      } // !(0u == map_has_this_key__40)
-
-    }
-
-    // 192
-    // 193
-    // 194
-    // 195
-    // 196
-    // 197
-    else {
-      uint8_t map_key_1[6];
-      map_key_1[0u] = ether_header_1->d_addr.addr_bytes[0ul];
-      map_key_1[1u] = ether_header_1->d_addr.addr_bytes[1ul];
-      map_key_1[2u] = ether_header_1->d_addr.addr_bytes[2ul];
-      map_key_1[3u] = ether_header_1->d_addr.addr_bytes[3ul];
-      map_key_1[4u] = ether_header_1->d_addr.addr_bytes[4ul];
-      map_key_1[5u] = ether_header_1->d_addr.addr_bytes[5ul];
-      int map_value_out_1;
-      int map_has_this_key__85 = map_get(map, map_key_1, &map_value_out_1);
-
-      // 192
-      // 193
-      if (0u == map_has_this_key__85) {
-
-        // 192
-        if (0u != device) {
-          return 0;
-        }
-
-        // 193
-        else {
-          return 1;
-        } // !(0u != device)
-
-      }
-
-      // 194
-      // 195
-      // 196
-      // 197
-      else {
-        uint8_t* vector_value_out = 0u;
-        vector_borrow(vector_1, map_value_out_1, (void**)(&vector_value_out));
-        vector_return(vector_1, map_value_out_1, vector_value_out);
-
-        // 194
-        // 195
-        if (0u != device) {
-
-          // 194
-          if (((int*)(vector_value_out))[0] != device) {
-            return 0;
-          }
-
-          // 195
-          else {
-            // dropping
-            return device;
-          } // !(((int*)(vector_value_out))[0] != device)
-
-        }
-
-        // 196
-        // 197
-        else {
-
-          // 196
-          if (((int*)(vector_value_out))[0]) {
-            return 1;
-          }
-
-          // 197
-          else {
-            // dropping
-            return device;
-          } // !((int*)(vector_value_out))[0]
-
-        } // !(0u != device)
-
-      } // !(0u == map_has_this_key__85)
-
-    } // !(false == ((out_of_space__32) & (0u == number_of_freed_flows__28)))
-
+  // 29
+  if (0u != device) {
+    return 0;
   }
 
-  // 198
-  // 199
-  // 200
-  // 201
-  // 202
-  // 203
+  // 30
   else {
-    dchain_rejuvenate_index(dchain, map_value_out, now);
-    uint8_t map_key_1[6];
-    map_key_1[0u] = ether_header_1->d_addr.addr_bytes[0ul];
-    map_key_1[1u] = ether_header_1->d_addr.addr_bytes[1ul];
-    map_key_1[2u] = ether_header_1->d_addr.addr_bytes[2ul];
-    map_key_1[3u] = ether_header_1->d_addr.addr_bytes[3ul];
-    map_key_1[4u] = ether_header_1->d_addr.addr_bytes[4ul];
-    map_key_1[5u] = ether_header_1->d_addr.addr_bytes[5ul];
-    int map_value_out_1;
-    int map_has_this_key__131 = map_get(map, map_key_1, &map_value_out_1);
-
-    // 198
-    // 199
-    if (0u == map_has_this_key__131) {
-
-      // 198
-      if (0u != device) {
-        return 0;
-      }
-
-      // 199
-      else {
-        return 1;
-      } // !(0u != device)
-
-    }
-
-    // 200
-    // 201
-    // 202
-    // 203
-    else {
-      uint8_t* vector_value_out = 0u;
-      vector_borrow(vector_1, map_value_out_1, (void**)(&vector_value_out));
-      vector_return(vector_1, map_value_out_1, vector_value_out);
-
-      // 200
-      // 201
-      if (0u != device) {
-
-        // 200
-        if (((int*)(vector_value_out))[0] != device) {
-          return 0;
-        }
-
-        // 201
-        else {
-          // dropping
-          return device;
-        } // !(((int*)(vector_value_out))[0] != device)
-
-      }
-
-      // 202
-      // 203
-      else {
-
-        // 202
-        if (((int*)(vector_value_out))[0]) {
-          return 1;
-        }
-
-        // 203
-        else {
-          // dropping
-          return device;
-        } // !((int*)(vector_value_out))[0]
-
-      } // !(0u != device)
-
-    } // !(0u == map_has_this_key__131)
-
-  } // !(0u == map_has_this_key__29)
+    return 1;
+  } // !(0u != device)
 
 }
 
