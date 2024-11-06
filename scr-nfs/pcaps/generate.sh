@@ -131,7 +131,7 @@ gen_imc_scr_trace() {
 gen_imc_scr_traces_scr() {
     local target=$1
     
-    gen_single_trace $target 64
+    gen_imc_scr_trace $target 64
 }
 
 # Check if poetry is installed
