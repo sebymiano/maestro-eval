@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <signal.h>
 
 #include <net/ethernet.h>
 #include <netinet/ip.h>
@@ -30,64 +29,6 @@
 #include <rte_mbuf.h>
 #include <rte_per_lcore.h>
 #include <rte_thash.h>
-#include <rte_flow.h>
-#include <rte_version.h>
-#include <rte_build_config.h>
-#include <rte_hash.h>
-
-/**********************************************
- *
- *         State Compute Replication
- *
- **********************************************/
-
-#define API_OLDEST_THAN(year, month)                                           \
-    ((defined RTE_VER_YEAR && RTE_VER_YEAR == year && defined RTE_VER_MONTH && \
-      RTE_VER_MONTH < month) ||                                                \
-     defined RTE_VER_YEAR && RTE_VER_YEAR < year)
-
-#define API_AT_LEAST_AS_RECENT_AS(year, month)                                 \
-    ((defined RTE_VER_YEAR && RTE_VER_YEAR == year && defined RTE_VER_MONTH && \
-      RTE_VER_MONTH >= month) ||                                               \
-     defined RTE_VER_YEAR && RTE_VER_YEAR >= year)
-
-#if API_AT_LEAST_AS_RECENT_AS(22, 03)
-  #define MQ_RX_NONE RTE_ETH_MQ_RX_NONE
-  #define RSS_RETA_SIZE_512 RTE_ETH_RSS_RETA_SIZE_512
-  #define RETA_GROUP_SIZE RTE_ETH_RETA_GROUP_SIZE
-  #define LCORE_FOREACH_WORKER RTE_LCORE_FOREACH_WORKER
-  #define RSS_NONFRAG_IPV4_TCP RTE_ETH_RSS_NONFRAG_IPV4_TCP
-  #define RSS_NONFRAG_IPV4_UDP RTE_ETH_RSS_NONFRAG_IPV4_UDP
-#else
-  #define MQ_RX_NONE ETH_MQ_RX_NONE
-  #define RSS_RETA_SIZE_512 ETH_RSS_RETA_SIZE_512
-  #define RETA_GROUP_SIZE RTE_RETA_GROUP_SIZE
-  #define LCORE_FOREACH_WORKER RTE_LCORE_FOREACH_SLAVE
-  #define RSS_NONFRAG_IPV4_TCP ETH_RSS_NONFRAG_IPV4_TCP
-  #define RSS_NONFRAG_IPV4_UDP ETH_RSS_NONFRAG_IPV4_UDP
-  
-#endif
-
-// Define a structure for MAC-to-queue mapping
-struct mac_to_queue_map {
-    uint8_t mac[RTE_ETHER_ADDR_LEN];
-    uint16_t queue_id;
-    struct rte_flow *flow;  // Pointer to the created flow rule
-};
-
-// Array to store MAC-to-queue mappings for each lcore
-static struct mac_to_queue_map mac_map[RTE_MAX_LCORE];
-
-struct metadata_elem {
-  uint16_t ether_type;
-  uint16_t packet_len;
-  uint16_t src_port;
-  uint16_t dst_port;
-  uint8_t protocol;
-  uint64_t timestamp;
-  uint32_t src_addr;
-  uint32_t dst_addr;
-} __attribute__((packed));
 
 /**********************************************
  *
@@ -323,32 +264,12 @@ int map_get(struct Map *map, void *key, int *value_out) {
                       key, map->keys_eq, hash, value_out, map->capacity);
 }
 
-int map_get_rte_hash(struct rte_hash *map, int *values_array, void *key, int *value_out) {
-  int idx = rte_hash_lookup(map, key);
-  if (idx < 0) {
-    return 0;
-  }
-
-  *value_out = values_array[idx];
-  return 1;
-}
-
 void map_put(struct Map *map, void *key, int value) {
   map_key_hash *khash = map->khash;
   unsigned hash = khash(key);
   map_impl_put(map->busybits, map->keyps, map->khs, map->chns, map->vals, key,
                hash, value, map->capacity);
   ++map->size;
-}
-
-int map_put_rte_hash(struct rte_hash *map, int *values_array, void *key, int value) {
-  int idx = rte_hash_add_key(map, key);
-  if (idx < 0) {
-    return 0;
-  }
-
-  values_array[idx] = value;
-  return 1;
 }
 
 void map_erase(struct Map *map, void *key, void **trash) {
@@ -358,18 +279,6 @@ void map_erase(struct Map *map, void *key, void **trash) {
                  map->keys_eq, hash, map->capacity, trash);
 
   --map->size;
-}
-
-int map_erase_rte_hash(struct rte_hash *map, int *values_array, void *key, int key_len, void **trash) {
-  int idx = rte_hash_del_key(map, key);
-  if (idx < 0) {
-    return 0;
-  }
-
-  rte_memcpy(*trash, key, key_len);
-
-  values_array[idx] = 0;
-  return 1;
 }
 
 unsigned map_size(struct Map *map) { return map->size; }
@@ -675,23 +584,6 @@ int expire_items_single_map(struct DoubleChain *chain, struct Vector *vector,
     void *key;
     vector_borrow(vector, index, &key);
     map_erase(map, key, &key);
-    vector_return(vector, index, key);
-
-    ++count;
-  }
-
-  return count;
-}
-
-int expire_items_single_map_rte_hash(struct DoubleChain *chain, struct Vector *vector,
-                            struct rte_hash *map, int *map_values, vigor_time_t time) {
-  int count = 0;
-  int index = -1;
-
-  while (dchain_expire_one_index(chain, &index, time)) {
-    void *key;
-    vector_borrow(vector, index, &key);
-    map_erase_rte_hash(map, map_values, key, sizeof(key), &key);
     vector_return(vector, index, key);
 
     ++count;
@@ -1119,10 +1011,10 @@ struct rte_ether_hdr;
 RTE_DEFINE_PER_LCORE(bool, write_attempt);
 RTE_DEFINE_PER_LCORE(bool, write_state);
 
-#define RETA_CONF_SIZE (RSS_RETA_SIZE_512 / RETA_GROUP_SIZE)
+#define RETA_CONF_SIZE (ETH_RSS_RETA_SIZE_512 / RTE_RETA_GROUP_SIZE)
 
 typedef struct {
-  uint16_t lut[RSS_RETA_SIZE_512];
+  uint16_t lut[ETH_RSS_RETA_SIZE_512];
   bool set;
 } reta_t;
 
@@ -1142,12 +1034,12 @@ void set_reta(uint16_t device) {
   memset(reta_conf, 0, sizeof(reta_conf));
 
   for (uint16_t bucket = 0; bucket < dev_info.reta_size; bucket++) {
-    reta_conf[bucket / RETA_GROUP_SIZE].mask = UINT64_MAX;
+    reta_conf[bucket / RTE_RETA_GROUP_SIZE].mask = UINT64_MAX;
   }
 
   for (uint16_t bucket = 0; bucket < dev_info.reta_size; bucket++) {
-    uint32_t reta_id = bucket / RETA_GROUP_SIZE;
-    uint32_t reta_pos = bucket % RETA_GROUP_SIZE;
+    uint32_t reta_id = bucket / RTE_RETA_GROUP_SIZE;
+    uint32_t reta_pos = bucket % RTE_RETA_GROUP_SIZE;
     reta_conf[reta_id].reta[reta_pos] = retas_per_device[device].lut[bucket];
   }
 
@@ -1162,9 +1054,9 @@ uint32_t spread_data_among_cores(uint32_t capacity) {
 
   // find power of 2
   for (int pow = 0; pow < 32; pow++) {
-      if ((1 << pow) >= capacity) {
-          return 1 << pow;
-      }
+    if ((1 << pow) >= capacity) {
+      return 1 << pow;
+    }
   }
 
   // we should not be here
@@ -1181,7 +1073,6 @@ uint32_t spread_data_among_cores(uint32_t capacity) {
 bool nf_init(void);
 int nf_process(uint16_t device, uint8_t *buffer, uint16_t packet_length,
                vigor_time_t now);
-int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now);
 
 #define FLOOD_FRAME ((uint16_t)-1)
 
@@ -1213,108 +1104,16 @@ void flood(struct rte_mbuf *packet, uint16_t nb_devices, uint16_t queue_id) {
   }
 }
 
-// Function to create a flow rule for each source MAC address
-static int create_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_map, size_t mac_map_size) {
-    struct rte_flow_attr attr;
-    struct rte_flow_item pattern[2] = {0};
-    struct rte_flow_action action[2] = {0};
-    struct rte_flow_error error;
-    int retval;
-
-    // Initialize the attributes to match on incoming packets
-    memset(&attr, 0, sizeof(attr));
-    attr.ingress = 1;  // Match on ingress packets
-
-    for (size_t i = 0; i < mac_map_size; i++) {
-        // Set up the match pattern for source MAC address
-        struct rte_flow_item_eth eth_spec;
-        struct rte_flow_item_eth eth_mask;
-
-        memset(&eth_spec, 0, sizeof(eth_spec));
-        memset(&eth_mask, 0, sizeof(eth_mask));
-
-        // Specify the source MAC address to match
-        rte_memcpy(&eth_spec.src.addr_bytes, mac_map[i].mac, RTE_ETHER_ADDR_LEN);
-        memset(&eth_mask.src.addr_bytes, 0xFF, RTE_ETHER_ADDR_LEN);  // Full match on the source MAC
-
-        pattern[0].type = RTE_FLOW_ITEM_TYPE_ETH;
-        pattern[0].spec = &eth_spec;
-        pattern[0].mask = &eth_mask;
-        pattern[0].last = NULL;
-        pattern[1].type = RTE_FLOW_ITEM_TYPE_END;
-
-        // Define the action to direct the packet to a specific RX queue
-        struct rte_flow_action_queue queue = {
-            .index = mac_map[i].queue_id
-        };
-
-        action[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
-        action[0].conf = &queue;
-        action[1].type = RTE_FLOW_ACTION_TYPE_END;
-
-        printf("Validaing flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
-               mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-               mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5]);
-        // Validate the flow rule
-        retval = rte_flow_validate(port_id, &attr, pattern, action, &error);
-        if (retval != 0) {
-            fprintf(stderr, "Error validating flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X %s\n",
-                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
-                    error.message);
-            return -1;
-        }
-
-        // Create the flow rule
-        struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern, action, &error);
-        if (!flow) {
-            fprintf(stderr, "Error creating flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X: %s\n",
-                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
-                    error.message);
-            return -1; 
-        } else {
-            mac_map[i].flow = flow;  // Store the flow pointer
-            printf("Created flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X directing to queue %d\n",
-                   mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                   mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
-                   mac_map[i].queue_id);
-        }
-    }
-    return 0;
-}
-
-// Function to destroy all flow rules created by create_mac_filter
-static void destroy_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_map, size_t mac_map_size) {
-    struct rte_flow_error error;
-
-    for (size_t i = 0; i < mac_map_size; i++) {
-        if (mac_map[i].flow) {
-            printf("Destroying flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
-                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5]);
-            int retval = rte_flow_destroy(port_id, mac_map[i].flow, &error);
-            if (retval != 0) {
-                fprintf(stderr, "Error destroying flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X: %s\n",
-                        mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                        mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
-                        error.message);
-            } else {
-                mac_map[i].flow = NULL;  // Clear the flow pointer after destruction
-            }
-        }
-    }
-}
-
 // Initializes the given device using the given memory pool
 static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   int retval;
   const uint16_t num_queues = rte_lcore_count();
 
-  struct rte_eth_conf device_conf = {0};
-
-  // Disable RSS to use only flow rules
-  device_conf.rxmode.mq_mode = MQ_RX_NONE;
+  // device_conf passed to rte_eth_dev_configure cannot be NULL
+  struct rte_eth_conf device_conf = { 0 };
+  // device_conf.rxmode.hw_strip_crc = 1;
+  device_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+  device_conf.rx_adv_conf.rss_conf = rss_conf[device];
 
   retval = rte_eth_dev_configure(device, num_queues, num_queues, &device_conf);
   if (retval != 0) {
@@ -1333,24 +1132,12 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   unsigned lcore_id;
   int rxq = 0;
   RTE_LCORE_FOREACH(lcore_id) {
-    printf("Setting up RX queue %d for lcore %u\n", rxq, lcore_id);
-    mac_map[rxq].mac[0] = 0x10;
-    mac_map[rxq].mac[1] = 0x10;
-    mac_map[rxq].mac[2] = 0x10;
-    mac_map[rxq].mac[3] = 0x10;
-    mac_map[rxq].mac[4] = 0x10;
-    mac_map[rxq].mac[5] = (uint8_t)(rxq);  // XX is 1, 2, 3, etc.
-
+    // Allocate and set up RX queues
     lcores_conf[lcore_id].queue_id = rxq;
-    mac_map[rxq].queue_id = rxq;
-
-
     retval = rte_eth_rx_queue_setup(device, rxq, RX_QUEUE_SIZE,
                                     rte_eth_dev_socket_id(device), NULL,
                                     mbuf_pools[rxq]);
     if (retval != 0) {
-      fprintf(stderr, "Error setting up RX queue %d for device %d: %s\n",
-              rxq, device, rte_strerror(retval));
       return retval;
     }
 
@@ -1363,39 +1150,15 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
     return retval;
   }
 
-  // Create MAC-based filtering rules
-  retval = create_mac_filter(device, mac_map, rxq);
-  if (retval != 0) {
-      return retval;
-  }
-
   // Enable RX in promiscuous mode, just in case
   rte_eth_promiscuous_enable(device);
   if (rte_eth_promiscuous_get(device) != 1) {
     return retval;
   }
 
+  set_reta(device);
+
   return 0;
-}
-
-void print_md(uint16_t device, uint16_t lcore_id, struct metadata_elem *md) {
-  if (md->ether_type != 0x0008)
-    return;
-
-  struct in_addr src_ip, dst_ip;
-  src_ip.s_addr = md->src_addr;
-  dst_ip.s_addr = md->dst_addr;
-    
-  printf("Metadata: \n");
-  printf("  - Core ID: %u\n", lcore_id);
-  printf("  - Device: %u\n", device);
-  printf("  - Ether type: 0x%04x\n", rte_be_to_cpu_16(md->ether_type));
-  printf("  - Packet length: %u\n", rte_be_to_cpu_16(md->packet_len));
-  printf("  - Src Port: %u\n", rte_be_to_cpu_16(md->src_port));
-  printf("  - Dst Port: %u\n", rte_be_to_cpu_16(md->dst_port));
-  printf("  - Src IP: %s\n", inet_ntoa(src_ip));
-  printf("  - Dst IP: %s\n", inet_ntoa(dst_ip));
-  printf("\n");
 }
 
 static void worker_main(void) {
@@ -1407,9 +1170,6 @@ static void worker_main(void) {
   }
 
   printf("Core %u forwarding packets.\n", rte_lcore_id());
-
-  const unsigned int NUM_CORES = rte_lcore_count();
-  printf("Number of cores for SCR: %d\n", NUM_CORES);
 
   if (rte_eth_dev_count_avail() != 2) {
     rte_exit(EXIT_FAILURE, "We assume there will be exactly 2 devices.");
@@ -1430,46 +1190,15 @@ static void worker_main(void) {
       for (uint16_t n = 0; n < rx_count; n++) {
         uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
         vigor_time_t VIGOR_NOW = current_time();
-
-        /* This is the part related to SCR */
-        int dummy_header_size = sizeof(struct ethhdr);
-        int md_offset = dummy_header_size;
-        struct metadata_elem *md;
-        uint8_t *md_start = data + md_offset;
-        uint64_t md_size = (NUM_CORES - 1) * sizeof(struct metadata_elem);
-        uint64_t offset = 0;
-
-        if (md_start + md_size > (data + mbufs[n]->data_len)) {
-          printf("Error: We requested %lu metadata from a packet with len: %d\n", md_size, mbufs[n]->data_len);
-          continue;
-        }
-
-        for (int i = 0; i < NUM_CORES - 1; i++) {
-          md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
-          // print_md(mbufs[n]->port, lcore_id, md);
-
-          nf_process_scr(mbufs[n]->port, md, md->timestamp);
-          VIGOR_NOW = md->timestamp + 10;
-        }
-
-        offset = dummy_header_size + md_size;
-        uint8_t *current_pkt_data = data + offset;
-        
-        uint16_t dst_device = nf_process(mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
+        uint16_t dst_device =
+            nf_process(mbufs[n]->port, data, mbufs[n]->pkt_len, VIGOR_NOW);
 
         if (dst_device == VIGOR_DEVICE) {
           rte_pktmbuf_free(mbufs[n]);
         } else if (dst_device == FLOOD_FRAME) {
           flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
         } else {
-          // offset = dummy_header_size + md_size;
-          // Remove the metadata section from the packet
-          // if (unlikely(rte_pktmbuf_adj(mbufs[n], offset) == NULL)) {
-          //   // If adjusting the mbuf fails, free the packet and continue
-          //   printf("Error: Unable to adjust mbuf to remove metadata\n");
-          //   rte_pktmbuf_free(mbufs[n]);
-          //   continue;
-          // }
+          
           mbufs_to_send[tx_count] = mbufs[n];
           tx_count++;
         }
@@ -1517,7 +1246,7 @@ struct rss_bucket_t {
 
 struct rss_buckets_t {
   uint16_t num_buckets;
-  struct rss_bucket_t buckets[RSS_RETA_SIZE_512];
+  struct rss_bucket_t buckets[ETH_RSS_RETA_SIZE_512];
 };
 
 struct rss_core_t {
@@ -1569,7 +1298,7 @@ int cmp_cores_decreasing(const void *a, const void *b, void *args) {
 }
 
 void rss_lut_balancer_init_buckets(struct rss_buckets_t *buckets) {
-  buckets->num_buckets = RSS_RETA_SIZE_512;
+  buckets->num_buckets = ETH_RSS_RETA_SIZE_512;
   for (int b = 0; b < buckets->num_buckets; b++) {
     buckets->buckets[b].id = b;
     buckets->buckets[b].counter = 0;
@@ -1581,7 +1310,7 @@ void rss_lut_balancer_init_lut(unsigned device) {
 
   // Set LUT default values.
   retas_per_device[device].set = true;
-  for (int b = 0; b < RSS_RETA_SIZE_512; b++) {
+  for (int b = 0; b < ETH_RSS_RETA_SIZE_512; b++) {
     retas_per_device[device].lut[b] = b % num_cores;
   }
 }
@@ -1656,7 +1385,7 @@ bool rss_lut_balancer_migrate_bucket(struct rss_cores_t *cores,
   uint16_t src_num_buckets = cores->cores[src_core].buckets.num_buckets;
   uint16_t dst_num_buckets = cores->cores[dst_core].buckets.num_buckets;
 
-  if (src_num_buckets == 1 || dst_num_buckets == RSS_RETA_SIZE_512) {
+  if (src_num_buckets == 1 || dst_num_buckets == ETH_RSS_RETA_SIZE_512) {
     return false;
   }
 
@@ -1866,7 +1595,7 @@ struct rss_buckets_t rss_lut_buckets_from_pcap(unsigned device,
 
     // As per X710/e810
     int chosen_bucket = hash & 0x1ff;
-    assert(chosen_bucket < RSS_RETA_SIZE_512);
+    assert(chosen_bucket < ETH_RSS_RETA_SIZE_512);
     assert(buckets.buckets[chosen_bucket].id == chosen_bucket);
     buckets.buckets[chosen_bucket].counter++;
   }
@@ -1901,12 +1630,6 @@ void rss_lut_balance(unsigned device, const char *pcap_fname) {
       retas_per_device[device].lut[bucket.id] = core.id;
     }
   }
-}
-
-static void signal_handler(int signum) {
-  printf("Received signal %d, exiting...\n", signum);
-  destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
-  exit(0);
 }
 
 // Entry point
@@ -1953,28 +1676,26 @@ int main(int argc, char **argv) {
 
   // Initialize all devices
   for (uint16_t device = 0; device < nb_devices; device++) {
+    rss_lut_balancer_init_lut(device);
+
+    if (args.valid_pcap) {
+      rss_lut_balance(device, args.pcap_fname);
+    }
+
     ret = nf_init_device(device, mbuf_pools);
     if (ret == 0) {
       printf("Initialized device %" PRIu16 ".\n", device);
     } else {
-      destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
       rte_exit(EXIT_FAILURE, "Cannot init device %" PRIu16 ": %d", device, ret);
     }
   }
 
-  signal(SIGINT, signal_handler);
-  signal(SIGTERM, signal_handler);
-  signal(SIGKILL, signal_handler);
-
-  LCORE_FOREACH_WORKER(lcore_id) {
-    printf("lauching worker on core %u\n", lcore_id);
+  RTE_LCORE_FOREACH_SLAVE(lcore_id) {
     rte_eal_remote_launch((lcore_function_t *)worker_main, NULL, lcore_id);
   }
-  
-  printf("Launching also worker thread. \n");
+
   worker_main();
 
-  destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
   return 0;
 }
 
@@ -1993,24 +1714,6 @@ bool FlowId_eq(void* a, void* b) {
       &&(id1->src_ip == id2->src_ip) &&(id1->dst_ip == id2->dst_ip)
           &&(id1->protocol == id2->protocol);
 }
-void null_init(void* obj) {
-  *(uint32_t *)obj = 0;
-}
-
-static inline uint32_t
-flow_hash_rte_hashmap(const void *data, __rte_unused uint32_t data_len, uint32_t init_val)
-{
-	struct FlowId *id = (struct FlowId *)data;
-
-	unsigned hash = init_val;
-  hash = __builtin_ia32_crc32si(hash, id->src_port);
-  hash = __builtin_ia32_crc32si(hash, id->dst_port);
-  hash = __builtin_ia32_crc32si(hash, id->src_ip);
-  hash = __builtin_ia32_crc32si(hash, id->dst_ip);
-  hash = __builtin_ia32_crc32si(hash, id->protocol);
-  return hash;
-}
-
 uint32_t FlowId_hash(void* obj) {
   struct FlowId* id = (struct FlowId*)obj;
 
@@ -2030,36 +1733,39 @@ void FlowId_allocate(void* obj) {
   id->dst_ip = 0;
   id->protocol = 0;
 }
+void null_init(void* obj) {
+  *(uint32_t *)obj = 0;
+}
 struct tcpudp_hdr {
   uint16_t src_port;
   uint16_t dst_port;
 };
 
 uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
-  0x68, 0x0, 0x0, 0x34, 0x0, 0x35, 0x68, 0x0, 
-  0x68, 0x0, 0x0, 0x35, 0x68, 0x0, 0x0, 0x35, 
-  0xb6, 0x52, 0xa7, 0xdc, 0x21, 0x21, 0x5, 0x58, 
-  0x9a, 0xae, 0x15, 0x18, 0xa7, 0x6b, 0x49, 0x11, 
-  0xed, 0xa6, 0xa, 0xc8, 0xd6, 0x8f, 0x71, 0xff
+  0x2, 0x3, 0x30, 0x4, 0x30, 0x4, 0x2, 0x2, 
+  0x2, 0x3, 0x30, 0x4, 0x2, 0x3, 0x30, 0x5, 
+  0xcd, 0xdb, 0x4e, 0x10, 0x4b, 0x5d, 0xc, 0xc5, 
+  0x17, 0x26, 0x9f, 0xaf, 0xd7, 0x86, 0xcf, 0x31, 
+  0x0, 0x3, 0xaa, 0x19, 0xe2, 0x39, 0xdd, 0x8e
 };
 uint8_t hash_key_1[RSS_HASH_KEY_LENGTH] = {
-  0x0, 0x35, 0x68, 0x0, 0x68, 0x0, 0x0, 0x34, 
-  0x0, 0x35, 0x68, 0x0, 0x0, 0x35, 0x68, 0x0, 
-  0xca, 0x81, 0xc8, 0x5a, 0xf7, 0xee, 0x7b, 0x48, 
-  0x9a, 0xe2, 0x8c, 0xc8, 0x48, 0x88, 0xec, 0x52, 
-  0x3, 0x0, 0x9f, 0x85, 0xc3, 0x32, 0xe1, 0xfe
+  0x30, 0x4, 0x2, 0x2, 0x2, 0x3, 0x30, 0x4, 
+  0x30, 0x4, 0x2, 0x3, 0x30, 0x4, 0x2, 0x2, 
+  0xb1, 0x13, 0x41, 0x82, 0xea, 0x5d, 0x87, 0x8, 
+  0x7c, 0xc1, 0x52, 0x2f, 0xe2, 0xca, 0xe8, 0x44, 
+  0x6b, 0x1, 0x2d, 0x66, 0x41, 0xe, 0xc7, 0x17
 };
 
 struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
   {
     .rss_key = hash_key_0,
     .rss_key_len = RSS_HASH_KEY_LENGTH,
-    .rss_hf = RSS_NONFRAG_IPV4_TCP | RSS_NONFRAG_IPV4_UDP
+    .rss_hf = ETH_RSS_NONFRAG_IPV4_TCP | ETH_RSS_NONFRAG_IPV4_UDP
   },
   {
     .rss_key = hash_key_1,
     .rss_key_len = RSS_HASH_KEY_LENGTH,
-    .rss_hf = RSS_NONFRAG_IPV4_TCP | RSS_NONFRAG_IPV4_UDP
+    .rss_hf = ETH_RSS_NONFRAG_IPV4_TCP | ETH_RSS_NONFRAG_IPV4_UDP
   }
 };
 
@@ -2067,77 +1773,35 @@ bool FlowId_eq(void* a, void* b) ;
 uint32_t FlowId_hash(void* obj) ;
 void FlowId_allocate(void* obj) ;
 void null_init(void* obj) ;
-RTE_DEFINE_PER_LCORE(struct rte_hash *, _map);
-RTE_DEFINE_PER_LCORE(int *, _map_values);
+RTE_DEFINE_PER_LCORE(struct Map*, _map);
 RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
 RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
 RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
 
 bool nf_init() {
-  struct rte_hash **map_ptr = &RTE_PER_LCORE(_map);
-  int **map_values_ptr = &RTE_PER_LCORE(_map_values);
+  struct Map** map_ptr = &RTE_PER_LCORE(_map);
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
   struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-
-  char map_name[32];  
-
-  snprintf(map_name, sizeof(map_name), "map_lcore%d", rte_lcore_id());
-
-  struct rte_hash_parameters map_allocation_params = {
-		.name = map_name,
-		.entries = 1048576u,
-		.key_len = sizeof(struct FlowId),
-		.hash_func = flow_hash_rte_hashmap,
-		.hash_func_init_val = 0,
-	};
-
-  printf("Allocating rte_hash map on lcore: %u\n", rte_lcore_id());
-  struct rte_hash *map = rte_hash_create(&map_allocation_params);
-  if (map == NULL) {
-    printf("Failed to allocate rte_hash map on lcore: %u\n", rte_lcore_id());
-    /* Print also errno */
-    printf("rte_errno: %d\n", rte_errno);
-    return 0;
-  }
-  *map_ptr = map;
-
-  int map_allocation_succeeded__1 = 0;
-  if (*map_ptr == NULL) {
-    printf("Failed to allocate rte_hash map on lcore: %u\n", rte_lcore_id());
-    map_allocation_succeeded__1 = 0;
-  } else {
-    printf("Allocated rte_hash map on lcore: %u\n", rte_lcore_id());
-    map_allocation_succeeded__1 = 1;
-  }
-
-  /* Now allocate the memory for the array holding the values */
-  *map_values_ptr = rte_malloc(NULL, 1048576u * sizeof(int), 64);
-  if (*map_values_ptr == NULL) {
-    printf("Failed to allocate values array on lcore: %u\n", rte_lcore_id());
-    map_allocation_succeeded__1 = 0;
-  } else {
-    printf("Allocated values array on lcore: %u\n", rte_lcore_id());
-  }
-  // int map_allocation_succeeded__1 = map_allocate(FlowId_eq, FlowId_hash, spread_data_among_cores(65535u), &(*map_ptr));
+  int map_allocation_succeeded__1 = map_allocate(FlowId_eq, FlowId_hash, spread_data_among_cores(65536u), &(*map_ptr));
 
   // 114
   // 115
   // 116
   // 117
   if (map_allocation_succeeded__1) {
-    int vector_alloc_success__4 = vector_allocate(13u, spread_data_among_cores(65535u), FlowId_allocate, &(*vector_ptr));
+    int vector_alloc_success__4 = vector_allocate(13u, spread_data_among_cores(65536u), FlowId_allocate, &(*vector_ptr));
 
     // 114
     // 115
     // 116
     if (vector_alloc_success__4) {
-      int vector_alloc_success__7 = vector_allocate(4u, spread_data_among_cores(65535u), null_init, &(*vector_1_ptr));
+      int vector_alloc_success__7 = vector_allocate(4u, spread_data_among_cores(65536u), null_init, &(*vector_1_ptr));
 
       // 114
       // 115
       if (vector_alloc_success__7) {
-        int is_dchain_allocated__10 = dchain_allocate(spread_data_among_cores(65535u), &(*dchain_ptr));
+        int is_dchain_allocated__10 = dchain_allocate(spread_data_among_cores(65536u), &(*dchain_ptr));
 
         // 114
         if (is_dchain_allocated__10) {
@@ -2172,120 +1836,12 @@ bool nf_init() {
 
 }
 
-int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now) {
-  struct rte_hash **map_ptr = &RTE_PER_LCORE(_map);
-  int **map_values_ptr = &RTE_PER_LCORE(_map_values);
-  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
-  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
-  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  
-  if ((8u == state_elem->ether_type) & (20ul <= (4294967282u + state_elem->packet_len))) {
-    if (((6u == state_elem->protocol) | (17u == state_elem->protocol)) & ((4294967262u + state_elem->packet_len) >= 4ul)) {
-      if (0u != device) {
-        uint8_t map_key[13];
-        map_key[0u] = state_elem->dst_port & 0xff;
-        map_key[1u] = (state_elem->dst_port >> 8) & 0xff;
-        map_key[2u] = state_elem->src_port & 0xff;
-        map_key[3u] = (state_elem->src_port >> 8) & 0xff;
-        map_key[4u] = state_elem->dst_addr & 0xff;
-        map_key[5u] = (state_elem->dst_addr >> 8) & 0xff;
-        map_key[6u] = (state_elem->dst_addr >> 16) & 0xff;
-        map_key[7u] = (state_elem->dst_addr >> 24) & 0xff;
-        map_key[8u] = state_elem->src_addr & 0xff;
-        map_key[9u] = (state_elem->src_addr >> 8) & 0xff;
-        map_key[10u] = (state_elem->src_addr >> 16) & 0xff;
-        map_key[11u] = (state_elem->src_addr >> 24) & 0xff;
-        map_key[12u] = state_elem->protocol;
-        int map_value_out;
-        int map_has_this_key__39 = map_get_rte_hash((*map_ptr), (*map_values_ptr), map_key, &map_value_out);
-
-        if (0u == map_has_this_key__39) {
-          // dropping
-          return device;
-        }
-
-        else {
-          uint8_t* vector_value_out = 0u;
-          vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
-          vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-          return 0;
-        }
-
-      } else {
-        uint8_t map_key[13];
-        map_key[0u] = state_elem->src_port & 0xff;
-        map_key[1u] = (state_elem->src_port >> 8) & 0xff;
-        map_key[2u] = state_elem->dst_port & 0xff;
-        map_key[3u] = (state_elem->dst_port >> 8) & 0xff;
-        map_key[4u] = state_elem->src_addr & 0xff;
-        map_key[5u] = (state_elem->src_addr >> 8) & 0xff;
-        map_key[6u] = (state_elem->src_addr >> 16) & 0xff;
-        map_key[7u] = (state_elem->src_addr >> 24) & 0xff;
-        map_key[8u] = state_elem->dst_addr & 0xff;
-        map_key[9u] = (state_elem->dst_addr >> 8) & 0xff;
-        map_key[10u] = (state_elem->dst_addr >> 16) & 0xff;
-        map_key[11u] = (state_elem->dst_addr >> 24) & 0xff;
-        map_key[12u] = state_elem->protocol;
-        int map_value_out;
-        int map_has_this_key__61 = map_get_rte_hash((*map_ptr), (*map_values_ptr), map_key, &map_value_out);
-
-        if (0u == map_has_this_key__61) {
-          uint32_t new_index__64;
-          int out_of_space__64 = !dchain_allocate_new_index((*dchain_ptr), &new_index__64, now);
-
-          if (false == ((out_of_space__64))) {
-            uint8_t* vector_value_out = 0u;
-            vector_borrow((*vector_ptr), new_index__64, (void**)(&vector_value_out));
-            vector_value_out[0u] = state_elem->src_port & 0xff;
-            vector_value_out[1u] = (state_elem->src_port >> 8) & 0xff;
-            vector_value_out[2u] = state_elem->dst_port & 0xff;
-            vector_value_out[3u] = (state_elem->dst_port >> 8) & 0xff;
-            vector_value_out[4u] = state_elem->src_addr & 0xff;
-            vector_value_out[5u] = (state_elem->src_addr >> 8) & 0xff;
-            vector_value_out[6u] = (state_elem->src_addr >> 16) & 0xff;
-            vector_value_out[7u] = (state_elem->src_addr >> 24) & 0xff;
-            vector_value_out[8u] = state_elem->dst_addr & 0xff;
-            vector_value_out[9u] = (state_elem->dst_addr >> 8) & 0xff;
-            vector_value_out[10u] = (state_elem->dst_addr >> 16) & 0xff;
-            vector_value_out[11u] = (state_elem->dst_addr >> 24) & 0xff;
-            vector_value_out[12u] = state_elem->protocol;
-            map_put_rte_hash((*map_ptr), (*map_values_ptr), vector_value_out, new_index__64);
-            vector_return((*vector_ptr), new_index__64, vector_value_out);
-            uint8_t* vector_value_out_1 = 0u;
-            vector_borrow((*vector_1_ptr), new_index__64, (void**)(&vector_value_out_1));
-            vector_value_out_1[0u] = device & 0xff;
-            vector_value_out_1[1u] = (device >> 8) & 0xff;
-            vector_value_out_1[2u] = 0u;
-            vector_value_out_1[3u] = 0u;
-            vector_return((*vector_1_ptr), new_index__64, vector_value_out_1);
-            return 1;
-          } else {
-            return 1;
-          }
-
-        } else {
-          return 1;
-        }
-
-      }
-    } else {
-      // dropping
-      return device;
-    }
-
-  } else {
-    // dropping
-    return device;
-  }
-}
-
 int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
-  struct rte_hash **map_ptr = &RTE_PER_LCORE(_map);
-  int **map_values_ptr = &RTE_PER_LCORE(_map_values);
+  struct Map** map_ptr = &RTE_PER_LCORE(_map);
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
   struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  int number_of_freed_flows__27 = expire_items_single_map_rte_hash((*dchain_ptr), (*vector_ptr), (*map_ptr), (*map_values_ptr), now - 100000000000ul);
+  int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
 
   // 120
@@ -2323,7 +1879,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
         map_key[11u] = (ipv4_header_1->src_addr >> 24) & 0xff;
         map_key[12u] = ipv4_header_1->next_proto_id;
         int map_value_out;
-        int map_has_this_key__39 = map_get_rte_hash((*map_ptr), (*map_values_ptr), map_key, &map_value_out);
+        int map_has_this_key__39 = map_get((*map_ptr), map_key, &map_value_out);
 
         // 120
         if (0u == map_has_this_key__39) {
@@ -2336,21 +1892,19 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
           uint8_t* vector_value_out = 0u;
           vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
           vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
-          ether_header_1->d_addr.addr_bytes[0] = 0xb8;
-          ether_header_1->d_addr.addr_bytes[1] = 0x3f;
-          ether_header_1->d_addr.addr_bytes[2] = 0xd2;
-          ether_header_1->d_addr.addr_bytes[3] = 0x13;
-          ether_header_1->d_addr.addr_bytes[4] = 0x08;
-          ether_header_1->d_addr.addr_bytes[5] = 0x43;
-
-          // Set source MAC address: b8:3f:d2:13:08:db
-          ether_header_1->s_addr.addr_bytes[0] = 0xb8;
-          ether_header_1->s_addr.addr_bytes[1] = 0x3f;
-          ether_header_1->s_addr.addr_bytes[2] = 0xd2;
-          ether_header_1->s_addr.addr_bytes[3] = 0x13;
-          ether_header_1->s_addr.addr_bytes[4] = 0x08;
-          ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          ether_header_1->d_addr.addr_bytes[0ul] = 1u;
+          ether_header_1->d_addr.addr_bytes[1ul] = 35u;
+          ether_header_1->d_addr.addr_bytes[2ul] = 69u;
+          ether_header_1->d_addr.addr_bytes[3ul] = 103u;
+          ether_header_1->d_addr.addr_bytes[4ul] = 137u;
+          ether_header_1->d_addr.addr_bytes[5ul] = 0u;
+          ether_header_1->s_addr.addr_bytes[0ul] = 0u;
+          ether_header_1->s_addr.addr_bytes[1ul] = 0u;
+          ether_header_1->s_addr.addr_bytes[2ul] = 0u;
+          ether_header_1->s_addr.addr_bytes[3ul] = 0u;
+          ether_header_1->s_addr.addr_bytes[4ul] = 0u;
+          ether_header_1->s_addr.addr_bytes[5ul] = 0u;
           return 0;
         } // !(0u == map_has_this_key__39)
 
@@ -2375,7 +1929,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
         map_key[11u] = (ipv4_header_1->dst_addr >> 24) & 0xff;
         map_key[12u] = ipv4_header_1->next_proto_id;
         int map_value_out;
-        int map_has_this_key__61 = map_get_rte_hash((*map_ptr), (*map_values_ptr), map_key, &map_value_out);
+        int map_has_this_key__61 = map_get((*map_ptr), map_key, &map_value_out);
 
         // 122
         // 123
@@ -2400,7 +1954,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             vector_value_out[10u] = (ipv4_header_1->dst_addr >> 16) & 0xff;
             vector_value_out[11u] = (ipv4_header_1->dst_addr >> 24) & 0xff;
             vector_value_out[12u] = ipv4_header_1->next_proto_id;
-            map_put_rte_hash((*map_ptr), (*map_values_ptr), vector_value_out, new_index__64);
+            map_put((*map_ptr), vector_value_out, new_index__64);
             vector_return((*vector_ptr), new_index__64, vector_value_out);
             uint8_t* vector_value_out_1 = 0u;
             vector_borrow((*vector_1_ptr), new_index__64, (void**)(&vector_value_out_1));
