@@ -96,22 +96,22 @@ def random_port():
 	return random.randint(1,10000)
 
 def get_flow_id(flow):
-    if "src_mac" in flow and "dst_mac" in flow:
-        return f"""
-            {flow['src_mac']}::
-            {flow['dst_mac']}::
-            {flow['src_ip']}::
-            {flow['dst_ip']}::
-            {flow['src_port']}::
-            {flow['dst_port']}
-        """.replace(" ", "").replace("\n", "")
+	if "src_mac" in flow and "dst_mac" in flow:
+		return f"""
+			{flow['src_mac']}::
+			{flow['dst_mac']}::
+			{flow['src_ip']}::
+			{flow['dst_ip']}::
+			{flow['src_port']}::
+			{flow['dst_port']}
+		""".replace(" ", "").replace("\n", "")
 
-    return f"""
-            {flow['src_ip']}::
-            {flow['dst_ip']}::
-            {flow['src_port']}::
-            {flow['dst_port']}
-        """.replace(" ", "").replace("\n", "")
+	return f"""
+			{flow['src_ip']}::
+			{flow['dst_ip']}::
+			{flow['src_port']}::
+			{flow['dst_port']}
+		""".replace(" ", "").replace("\n", "")
 
 def create_flow(private_only, internet_only):
 	flow = {
@@ -142,6 +142,13 @@ def read_trace(pcap_name: str, max_packets: int = -1) -> tuple[dict, int, list[i
 	unique_flows = {}
 	pkt_sizes = []
 	counter = 0
+
+	command = f'capinfos {pcap_name} | grep "Number of packets" | tr -d " " | grep -oP "Numberofpackets=\K\d+"'
+	output = subprocess.check_output(command, shell=True, universal_newlines=True)
+	total_packets = int(output.strip())
+	# Get the total number of packets for the progress bar
+	# total_packets = sum(1 for _ in read_packets(input_file))
+	print(f"Total packets in {pcap_name}: {total_packets}")
 
 	pcapReader = PcapReader(pcap_name)
 

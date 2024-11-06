@@ -13,6 +13,12 @@ IMC10_URL=https://pages.cs.wisc.edu/~tbenson/IMC_DATA/$IMC10_FILE
 IMC10_CHOSEN_TRACE=univ2_pt1
 IMC10_TRACE=imc10.pcap
 
+IMC16_FILE=univ1_trace.tgz
+IMC16_URL=https://pages.cs.wisc.edu/~tbenson/IMC_DATA/$IMC16_FILE
+IMC16_CHOSEN_TRACE=univ1_pt16
+IMC16_TRACE=imc16.pcap
+
+
 UNIFORM_SCRIPT=$SCRIPT_DIR/uniform.py
 SINGLE_SCRIPT=$SCRIPT_DIR/single.py
 NORMALIZE_PACKET_SIZES_SCRIPT=$SCRIPT_DIR/normalize_packet_sizes.py
@@ -30,6 +36,24 @@ get_univ_trace() {
                 wget $IMC10_URL
                 tar xvzf $IMC10_FILE
                 mv $IMC10_CHOSEN_TRACE ../$IMC10_TRACE
+            popd
+            rm -rf .tmp
+        fi
+    popd
+}
+
+get_scr_univ_trace() {
+    pushd $SCRIPT_DIR >/dev/null
+        if [ -f $IMC16_TRACE ]; then
+            return 0
+        fi
+
+        if [ ! -f $IMC16_FILE ]; then
+            mkdir -p .tmp
+            pushd .tmp >/dev/null
+                wget $IMC16_URL
+                tar xvzf $IMC16_FILE
+                mv $IMC16_CHOSEN_TRACE ../$IMC16_TRACE
             popd
             rm -rf .tmp
         fi
@@ -72,6 +96,26 @@ gen_uniform_internet_trace() {
     fi
 
     $UNIFORM_SCRIPT --output $pcap --pcap $IMC10_TRACE --flows $num_flows --max $num_flows --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
+}
+
+gen_processed_internet_trace() {
+    pcap=$SCRIPT_DIR/imc_maestro.pcap
+
+    if [ -f $pcap ]; then
+        return 0
+    fi
+
+    $UNIFORM_SCRIPT --output $pcap --pcap $IMC10_TRACE --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
+}
+
+gen_processed_scr_internet_trace() {
+    pcap=$SCRIPT_DIR/imc_scr.pcap
+
+    if [ -f $pcap ]; then
+        return 0
+    fi
+
+    $UNIFORM_SCRIPT --output $pcap --pcap $IMC16_TRACE --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
 }
 
 gen_uniform_vpp_trace() {
@@ -146,9 +190,19 @@ get_churn_traces() {
 }
 
 get_univ_trace
+
 gen_uniform_traces
 gen_single_flow_traces
 gen_uniform_internet_trace
 gen_uniform_vpp_trace
 get_zipf_trace
 get_churn_traces
+
+# Check if there are parameters specified and
+# if the value --scr is present
+if [ $# -gt 0 ] && [ "$1" == "--scr" ]; then
+    gen_processed_internet_trace
+    get_scr_univ_trace
+    gen_processed_scr_internet_trace
+fi
+    
