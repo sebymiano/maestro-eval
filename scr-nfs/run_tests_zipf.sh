@@ -8,9 +8,6 @@ CURRENT_EXPERIMENT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/nul
 FUNCTIONS_FILE="$CURRENT_EXPERIMENT_DIR/../bench/functions.sh"
 source $FUNCTIONS_FILE
 
-DUT_SCR_PCAPS_DIR=$DUT_EVAL_DIR/scr-nfs/pcaps
-TG_SCR_PCAPS_DIR=$TG_EVAL_DIR/scr-nfs/pcaps
-
 PCAP_FOLDER_CL="cl_zipf_64_scr"
 PCAP_FOLDER_FW="fw_zipf_64_scr"
 PCAP_FOLDER_NAT="nat_zipf_64_scr"
