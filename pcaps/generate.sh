@@ -99,23 +99,25 @@ gen_uniform_internet_trace() {
 }
 
 gen_processed_internet_trace() {
-    pcap=$SCRIPT_DIR/imc_maestro.pcap
+    pkt_size=64
+    pcap=$SCRIPT_DIR/imc_scr_${pkt_size}B.pcap
 
     if [ -f $pcap ]; then
         return 0
     fi
 
-    $UNIFORM_SCRIPT --output $pcap --pcap $IMC10_TRACE --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
+    $UNIFORM_SCRIPT --output "$pcap" --pcap "${IMC10_TRACE}" --size $pkt_size --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
 }
 
 gen_processed_scr_internet_trace() {
-    pcap=$SCRIPT_DIR/imc_scr.pcap
+    pkt_size=64
+    pcap=$SCRIPT_DIR/imc_scr_${pkt_size}B.pcap
 
     if [ -f $pcap ]; then
         return 0
     fi
 
-    $UNIFORM_SCRIPT --output $pcap --pcap $IMC16_TRACE --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
+    $UNIFORM_SCRIPT --output "$pcap" --pcap "${IMC16_TRACE}" --size $pkt_size --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
 }
 
 gen_uniform_vpp_trace() {
@@ -201,7 +203,7 @@ get_churn_traces
 # Check if there are parameters specified and
 # if the value --scr is present
 if [ $# -gt 0 ] && [ "$1" == "--scr" ]; then
-    gen_processed_internet_trace
+    # gen_processed_internet_trace
     get_scr_univ_trace
     gen_processed_scr_internet_trace
 fi

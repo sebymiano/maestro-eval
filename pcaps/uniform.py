@@ -116,6 +116,10 @@ if __name__ == "__main__":
 		else:
 			num_flows = len(unique_flows)
 			generate_unique_flows = False
+			if args.size is not None:
+				print(f"Enforce speficic packet size to {args.size}")
+				pkt_sizes = args.size
+				
 	else:
 		assert args.flows > 0
 		if args.size == None:
