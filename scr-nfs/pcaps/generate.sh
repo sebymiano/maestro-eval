@@ -102,11 +102,36 @@ gen_single_traces_scr() {
     local target=$1
     
     gen_single_trace $target 64
-    # gen_single_trace $target 128
-    # gen_single_trace $target 256
-    # gen_single_trace $target 512
-    # gen_single_trace $target 1024
-    # gen_single_trace $target 1500
+}
+
+gen_zipf_trace() {
+    local target=$1
+    local pkt_size=$2
+
+    pcap=$ORIGINAL_PCAP_DIR/zipf.pcap
+
+    gen_trace $target $pkt_size $pcap "zipf"
+}
+
+gen_zipf_traces_scr() {
+    local target=$1
+    
+    gen_zipf_trace $target 64
+}
+
+gen_imc_scr_trace() {
+    local target=$1
+    local pkt_size=$2
+
+    pcap=$ORIGINAL_PCAP_DIR/imc_scr_${pkt_size}B.pcap
+
+    gen_trace $target $pkt_size $pcap "imc_scr"
+}
+
+gen_imc_scr_traces_scr() {
+    local target=$1
+    
+    gen_single_trace $target 64
 }
 
 # Check if poetry is installed
@@ -144,6 +169,22 @@ gen_uniform_traces_scr "fw"
 gen_uniform_traces_scr "nat"
 gen_uniform_traces_scr "psd"
 gen_uniform_traces_scr "pol"
+
+gen_zipf_traces_scr "nop"
+gen_zipf_traces_scr "cl"
+gen_zipf_traces_scr "sbridge"
+gen_zipf_traces_scr "fw"
+gen_zipf_traces_scr "nat"
+gen_zipf_traces_scr "psd"
+gen_zipf_traces_scr "pol"
+
+gen_imc_scr_traces_scr "nop"
+gen_imc_scr_traces_scr "cl"
+gen_imc_scr_traces_scr "sbridge"
+gen_imc_scr_traces_scr "fw"
+gen_imc_scr_traces_scr "nat"
+gen_imc_scr_traces_scr "psd"
+gen_imc_scr_traces_scr "pol"
 
 duration=$SECONDS
 echo "$((duration / 60)) minutes and $((duration % 60)) seconds elapsed."
