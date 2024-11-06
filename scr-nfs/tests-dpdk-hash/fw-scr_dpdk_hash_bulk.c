@@ -333,6 +333,20 @@ int map_get_rte_hash(struct rte_hash *map, int *values_array, void *key, int *va
   return 1;
 }
 
+int map_get_rte_hash_bulk(const struct rte_hash *map, const int *values_array, const void **keys, int num_keys, int *values_out) {
+  int positions[num_keys];
+  int ret = rte_hash_lookup_bulk(map, keys, num_keys, positions);
+  if (ret < 0) {
+    return 0;
+  }
+
+  for (int i = 0; i < num_keys; i++) {
+    values_out[i] = values_array[positions[i]];
+  }
+
+  return 1;
+}
+
 void map_put(struct Map *map, void *key, int value) {
   map_key_hash *khash = map->khash;
   unsigned hash = khash(key);
@@ -1182,6 +1196,7 @@ bool nf_init(void);
 int nf_process(uint16_t device, uint8_t *buffer, uint16_t packet_length,
                vigor_time_t now);
 int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now);
+int nf_process_scr_once(uint16_t device, struct metadata_elem **state_elems, const int state_elem_len, int64_t now);
 
 #define FLOOD_FRAME ((uint16_t)-1)
 
@@ -1398,6 +1413,8 @@ void print_md(uint16_t device, uint16_t lcore_id, struct metadata_elem *md) {
   printf("\n");
 }
 
+#define MAX_KEY_MAX_NUM_CORES 16
+
 static void worker_main(void) {
   const unsigned lcore_id = rte_lcore_id();
   const uint16_t queue_id = lcores_conf[lcore_id].queue_id;
@@ -1427,6 +1444,8 @@ static void worker_main(void) {
       struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];
       uint16_t tx_count = 0;
 
+      struct metadata_elem *metadata_list[MAX_KEY_MAX_NUM_CORES];
+
       for (uint16_t n = 0; n < rx_count; n++) {
         uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
         vigor_time_t VIGOR_NOW = current_time();
@@ -1443,13 +1462,20 @@ static void worker_main(void) {
           printf("Error: We requested %lu metadata from a packet with len: %d\n", md_size, mbufs[n]->data_len);
           continue;
         }
-
+        int j = 0;
         for (int i = 0; i < NUM_CORES - 1; i++) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
-          // print_md(mbufs[n]->port, lcore_id, md);
+          
+          if ((8u == md->ether_type) & (20ul <= (4294967282u + md->packet_len))) {
+            if (((6u == md->protocol) | (17u == md->protocol)) & ((4294967262u + md->packet_len) >= 4ul)) {
+              metadata_list[j++] = md;
+              VIGOR_NOW = md->timestamp + 10;
+            }
+          }
+        }
 
-          nf_process_scr(mbufs[n]->port, md, md->timestamp);
-          VIGOR_NOW = md->timestamp + 10;
+        if (j > 0) {
+          nf_process_scr_once(mbufs[n]->port, metadata_list, j, VIGOR_NOW);
         }
 
         offset = dummy_header_size + md_size;
@@ -2272,6 +2298,128 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
       // dropping
       return device;
     }
+
+  } else {
+    // dropping
+    return device;
+  }
+}
+
+int nf_process_scr_once(uint16_t device, struct metadata_elem **state_elems, const int state_elem_len, int64_t now) {
+  struct rte_hash **map_ptr = &RTE_PER_LCORE(_map);
+  int **map_values_ptr = &RTE_PER_LCORE(_map_values);
+  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
+  
+  if (state_elem_len > 0) {
+      if (0u != device) {
+        uint8_t map_keys[13*MAX_KEY_MAX_NUM_CORES];
+        const void *key_ptrs[MAX_KEY_MAX_NUM_CORES];
+        for (int i = 0; i < state_elem_len; i++) {
+          map_keys[i*13] = state_elems[i]->src_port & 0xff;
+          map_keys[i*13 + 1] = (state_elems[i]->src_port >> 8) & 0xff;
+          map_keys[i*13 + 2] = state_elems[i]->dst_port & 0xff;
+          map_keys[i*13 + 3] = (state_elems[i]->dst_port >> 8) & 0xff;
+          map_keys[i*13 + 4] = state_elems[i]->src_addr & 0xff;
+          map_keys[i*13 + 5] = (state_elems[i]->src_addr >> 8) & 0xff;
+          map_keys[i*13 + 6] = (state_elems[i]->src_addr >> 16) & 0xff;
+          map_keys[i*13 + 7] = (state_elems[i]->src_addr >> 24) & 0xff;
+          map_keys[i*13 + 8] = state_elems[i]->dst_addr & 0xff;
+          map_keys[i*13 + 9] = (state_elems[i]->dst_addr >> 8) & 0xff;
+          map_keys[i*13 + 10] = (state_elems[i]->dst_addr >> 16) & 0xff;
+          map_keys[i*13 + 11] = (state_elems[i]->dst_addr >> 24) & 0xff;
+          map_keys[i*13 + 12] = state_elems[i]->protocol;
+
+          key_ptrs[i] = &map_keys[i * 13];
+        }
+        int map_values_out[MAX_KEY_MAX_NUM_CORES] = {0};
+        int ret = map_get_rte_hash_bulk((*map_ptr), (*map_values_ptr), key_ptrs, state_elem_len, map_values_out);
+        if (ret == 0) {
+          return device;
+        }
+
+        for (int i = 0; i < state_elem_len; i++) {
+          int map_has_this_key__61 = map_values_out[i];
+          if (map_has_this_key__61 <= 0) {
+            return device;
+          } else {
+            uint8_t* vector_value_out = 0u;
+            vector_borrow((*vector_1_ptr), map_values_out[i], (void**)(&vector_value_out));
+            vector_return((*vector_1_ptr), map_values_out[i], vector_value_out);
+          }
+        }
+      } else {
+        uint8_t map_keys[13*MAX_KEY_MAX_NUM_CORES];
+        const void *key_ptrs[MAX_KEY_MAX_NUM_CORES];
+        for (int i = 0; i < state_elem_len; i++) {
+          map_keys[i*13] = state_elems[i]->src_port & 0xff;
+          map_keys[i*13 + 1] = (state_elems[i]->src_port >> 8) & 0xff;
+          map_keys[i*13 + 2] = state_elems[i]->dst_port & 0xff;
+          map_keys[i*13 + 3] = (state_elems[i]->dst_port >> 8) & 0xff;
+          map_keys[i*13 + 4] = state_elems[i]->src_addr & 0xff;
+          map_keys[i*13 + 5] = (state_elems[i]->src_addr >> 8) & 0xff;
+          map_keys[i*13 + 6] = (state_elems[i]->src_addr >> 16) & 0xff;
+          map_keys[i*13 + 7] = (state_elems[i]->src_addr >> 24) & 0xff;
+          map_keys[i*13 + 8] = state_elems[i]->dst_addr & 0xff;
+          map_keys[i*13 + 9] = (state_elems[i]->dst_addr >> 8) & 0xff;
+          map_keys[i*13 + 10] = (state_elems[i]->dst_addr >> 16) & 0xff;
+          map_keys[i*13 + 11] = (state_elems[i]->dst_addr >> 24) & 0xff;
+          map_keys[i*13 + 12] = state_elems[i]->protocol;
+
+          key_ptrs[i] = &map_keys[i * 13];
+        }
+        
+        int map_values_out[MAX_KEY_MAX_NUM_CORES] = {0};
+        int ret = map_get_rte_hash_bulk((*map_ptr), (*map_values_ptr), key_ptrs, state_elem_len, map_values_out);
+        if (ret == 0) {
+          return device;
+        }
+        // int map_has_this_key__61 = map_get_rte_hash((*map_ptr), (*map_values_ptr), map_key, &map_values_out);
+
+        for (int i = 0; i < state_elem_len; i++) {
+          int map_has_this_key__61 = map_values_out[i];
+          if (map_has_this_key__61 <= 0) {
+            /* The map doesn't have this key */
+            uint32_t new_index__64;
+            int out_of_space__64 = !dchain_allocate_new_index((*dchain_ptr), &new_index__64, now);
+
+            if (false == ((out_of_space__64))) {
+              uint8_t* vector_value_out = 0u;
+              vector_borrow((*vector_ptr), new_index__64, (void**)(&vector_value_out));
+              vector_value_out[0u] = state_elems[i]->src_port & 0xff;
+              vector_value_out[1u] = (state_elems[i]->src_port >> 8) & 0xff;
+              vector_value_out[2u] = state_elems[i]->dst_port & 0xff;
+              vector_value_out[3u] = (state_elems[i]->dst_port >> 8) & 0xff;
+              vector_value_out[4u] = state_elems[i]->src_addr & 0xff;
+              vector_value_out[5u] = (state_elems[i]->src_addr >> 8) & 0xff;
+              vector_value_out[6u] = (state_elems[i]->src_addr >> 16) & 0xff;
+              vector_value_out[7u] = (state_elems[i]->src_addr >> 24) & 0xff;
+              vector_value_out[8u] = state_elems[i]->dst_addr & 0xff;
+              vector_value_out[9u] = (state_elems[i]->dst_addr >> 8) & 0xff;
+              vector_value_out[10u] = (state_elems[i]->dst_addr >> 16) & 0xff;
+              vector_value_out[11u] = (state_elems[i]->dst_addr >> 24) & 0xff;
+              vector_value_out[12u] = state_elems[i]->protocol;
+              map_put_rte_hash((*map_ptr), (*map_values_ptr), vector_value_out, new_index__64);
+              vector_return((*vector_ptr), new_index__64, vector_value_out);
+              uint8_t* vector_value_out_1 = 0u;
+              vector_borrow((*vector_1_ptr), new_index__64, (void**)(&vector_value_out_1));
+              vector_value_out_1[0u] = device & 0xff;
+              vector_value_out_1[1u] = (device >> 8) & 0xff;
+              vector_value_out_1[2u] = 0u;
+              vector_value_out_1[3u] = 0u;
+              vector_return((*vector_1_ptr), new_index__64, vector_value_out_1);
+              return 1;
+            } else {
+              return 1;
+            }
+
+          } else {
+            return 1;
+          }
+        }
+
+      }
 
   } else {
     // dropping
