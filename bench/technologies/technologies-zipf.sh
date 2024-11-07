@@ -5,6 +5,7 @@ set -euo pipefail
 CURRENT_EXPERIMENT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 
 FUNCTIONS_FILE="$CURRENT_EXPERIMENT_DIR/../functions.sh"
+MLNX_SYNTHESIZED_NFS="$CURRENT_EXPERIMENT_DIR/../../synthesized-mlnx/compile.sh"
 source $FUNCTIONS_FILE
 
 PCAP="zipf.pcap"
@@ -48,6 +49,8 @@ tm() {
     bench_balanced_nf "psd-tm" "psd" "tm" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "psd-tm-zipf"
     bench_balanced_nf "cl-tm" "cl" "tm" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-tm-zipf"
 }
+
+sh -c ${MLNX_SYNTHESIZED_NFS}
 
 shared_nothing
 rss
