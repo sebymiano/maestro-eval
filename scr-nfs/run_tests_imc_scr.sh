@@ -76,7 +76,9 @@ run_balanced_bench_scr() {
 		fi
 		
         tg_check_file "${TG_PCAPS_DIR}/${pcap_pattern}${n_cores}cores.pcap"
+		export ADDITIONAL_REPLAY_PCAP_FLAGS="--scr --num-rx-queues $n_cores"
 		__run_balanced_bench_with_n_cores "$nf_exe" "$pcap_file" "$n_cores" "$intermediate_results_file" "$tmp_results_file" "$exp_name"
+		export ADDITIONAL_REPLAY_PCAP_FLAGS=""
 	done
 
 	__finalize_bench "$tmp_results_file" "$results_file"

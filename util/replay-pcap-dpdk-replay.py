@@ -56,6 +56,7 @@ write_csv: True
 wait_enter: False
 slow_mode: False
 convert_to_json: True
+use_mac_filter: False
 nb_rx_queues: 16
 nb_rx_cores: 4
 stats:
@@ -67,10 +68,18 @@ send_port_pci: {{sendport}}
 loglevel: TRACE
 """
 
-DPDK_BURST_REPLAY_CONFIG_TEMPLATE_SINGLE = \
+DPDK_BURST_REPLAY_CONFIG_TEMPLATE_SCR = \
 """
 ---
 traces: 
+  - path: "{{pcap}}"
+    tx_queues: 8
+  - path: "{{pcap}}"
+    tx_queues: 8
+  - path: "{{pcap}}"
+    tx_queues: 8
+  - path: "{{pcap}}"
+    tx_queues: 8
   - path: "{{pcap}}"
     tx_queues: 8
 numacore: {{numacore}}
@@ -82,7 +91,8 @@ write_csv: True
 wait_enter: False
 slow_mode: False
 convert_to_json: True
-nb_rx_queues: 16
+use_mac_filter: True
+nb_rx_queues: {{num_rx_queues}}
 nb_rx_cores: 4
 stats:
   - pci_id: {{sendport}}
@@ -98,8 +108,13 @@ def kill_pktgen(sig, frame):
 	os.system("sudo killall dpdk-replay")
 	sys.exit(0)
 
-def build_script_throughput(pcap, rate, cfg, duration_sec, warmup_duration_sec=DEFAULT_WARMUP_DURATION_SEC):
-	script = DPDK_BURST_REPLAY_CONFIG_TEMPLATE
+def build_script_throughput(pcap, rate, cfg, duration_sec, warmup_duration_sec=DEFAULT_WARMUP_DURATION_SEC, scr=False, num_rx_queues=8):
+	if scr:
+		script = DPDK_BURST_REPLAY_CONFIG_TEMPLATE_SCR
+		script = script.replace('{{num_rx_queues}}', str(num_rx_queues))
+	else:
+		script = DPDK_BURST_REPLAY_CONFIG_TEMPLATE
+
 	script = script.replace('{{pcap}}', str(pcap))
 	script = script.replace('{{sendport}}', str(cfg['tx']['dev']))
 	script = script.replace('{{recvport}}', str(cfg['rx']['dev']))
@@ -235,7 +250,7 @@ def save_latency_data(data):
 		for d in data:
 			f.write(f'{d}\n')
 
-def run_pktgen(pcap, rate, cfg, duration_sec, lb=False, dry_run=False, verbose=False):
+def run_pktgen(pcap, rate, cfg, duration_sec, lb=False, dry_run=False, verbose=False, scr=False, num_rx_queues=8):
 	def __run(dry_run, pktgen_cmd):
 		if dry_run:
 			exit(0)
@@ -265,7 +280,7 @@ def run_pktgen(pcap, rate, cfg, duration_sec, lb=False, dry_run=False, verbose=F
 	print(f"[*] Replaing at {rate_mbps} Mbps")
 
 
-	build_script_throughput(pcap, rate_mbps, cfg, duration_sec)	
+	build_script_throughput(pcap, rate_mbps, cfg, duration_sec, scr=scr, num_rx_queues=num_rx_queues)	
 	pktgen_cmd = build_pktgen_command(PKTGEN_SCRIPT_THROUGHPUT)
 
 	if lb:
@@ -397,7 +412,7 @@ def get_cfg(tx_pcie_dev, rx_pcie_dev, num_tx_cores, num_rx_cores):
 
 	return cfg
 
-def search_throughput(pcap, cfg, duration_sec, iterations, lb=False, dry_run=False, verbose=False):
+def search_throughput(pcap, cfg, duration_sec, iterations, lb=False, dry_run=False, verbose=False, scr=False, num_rx_queues=8):
 	upper_bound = 100.0 # %
 	lower_bound = 0     # %
 	
@@ -429,7 +444,7 @@ def search_throughput(pcap, cfg, duration_sec, iterations, lb=False, dry_run=Fal
 		if rate < 0.1 or i >= iterations:
 			break
 		
-		data = run_pktgen(pcap, rate, cfg, duration_sec, lb=lb, dry_run=dry_run, verbose=verbose)
+		data = run_pktgen(pcap, rate, cfg, duration_sec, lb=lb, dry_run=dry_run, verbose=verbose, scr=scr, num_rx_queues=num_rx_queues)
 
 		# Very few packets sent, something went wrong
 		if data["tx"]["rate"] < 0.1:
@@ -548,6 +563,13 @@ def main():
 		default=False, required=False, action='store_true',
 		help='Shows Pktgen output')
 
+	parser.add_argument('--scr',
+		default=False, required=False, action='store_true',
+		help='Use MAC filter')
+	
+	parser.add_argument('--num-rx-queues',
+		type=int, default=8, required=False, help='Number of RX queues')
+
 	args = parser.parse_args()
 
 	pcap = os.path.abspath(args.pcap)
@@ -556,6 +578,10 @@ def main():
 	validate_pcie_dev(args.tx)
 	validate_pcie_dev(args.rx)
 
+	if args.scr:
+		print(f"[*] Using MAC filter")
+		print(f"[*] Using {args.num_rx_queues} RX queues")
+
 	cfg = get_cfg(args.tx, args.rx, args.tx_cores, args.rx_cores)
 
 	if args.latency:
@@ -563,9 +589,9 @@ def main():
 		exit(1)
 	else:
 		if args.find_stable_throughput:
-			data = search_throughput(pcap, cfg, args.duration, args.iterations, lb=args.lb, dry_run=args.dry_run, verbose=args.v)
+			data = search_throughput(pcap, cfg, args.duration, args.iterations, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues)
 		else:
-			data = run_pktgen(pcap, cfg, args.rate, args.duration, lb=args.lb, dry_run=args.dry_run, verbose=args.v)
+			data = run_pktgen(pcap, cfg, args.rate, args.duration, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues)
 
 		save_throughput_data(data)
 
