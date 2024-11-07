@@ -25,7 +25,7 @@ build_nf_scr() {
 	dut_run "cp $DUT_SCR_DIR/$nf_src $DUT_SYNTHESIZED_DIR/${nf_src}"
 
 	if ! dut_run "stat $nf_exe > /dev/null 2>&1" "$DUT_SYNTHESIZED_DIR"; then
-		dut_run "CFLAGS=\"-I${DUT_SCR_DIR}\" SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
+		dut_run "CFLAGS=\"-I${CURRENT_EXPERIMENT_DIR}\" SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
 	fi
 }
 
