@@ -54,7 +54,13 @@ def get_md_from_pkt(pkt):
     if pkt.haslayer(Ether):
         md_elem.mac_dst_addr = int(pkt.getlayer(Ether).dst.replace(":", ""), 16)
 
-    md_elem.timestamp = pkt.time
+    if not hasattr(get_md_from_pkt, "static_time"):
+        tp = time.clock_gettime(time.CLOCK_MONOTONIC)
+        get_md_from_pkt.static_time = int(tp * 1_000_000_000)
+
+    get_md_from_pkt.static_time += 100  # Increment time by 100 nanoseconds
+
+    md_elem.timestamp = get_md_from_pkt.static_time
 
     return md_elem
 

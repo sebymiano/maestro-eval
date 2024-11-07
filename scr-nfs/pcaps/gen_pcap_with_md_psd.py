@@ -70,8 +70,10 @@ def get_md_from_pkt(pkt):
         sys.exit(1)
 
     if not hasattr(get_md_from_pkt, "static_time"):
-        get_md_from_pkt.static_time = 100000000
-    get_md_from_pkt.static_time += 100
+        tp = time.clock_gettime(time.CLOCK_MONOTONIC)
+        get_md_from_pkt.static_time = int(tp * 1_000_000_000)
+
+    get_md_from_pkt.static_time += 100  # Increment time by 100 nanoseconds
 
     md_elem.timestamp = get_md_from_pkt.static_time
     

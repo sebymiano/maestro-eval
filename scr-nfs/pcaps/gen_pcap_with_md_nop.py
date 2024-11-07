@@ -27,7 +27,7 @@ class MetadataElem:
         md_bytes = b""
         # Convert MAC address to bytes (6 bytes for MAC address in big-endian)
         # md_bytes += self.protocol.to_bytes(1, "big")
-        md_bytes += int(self.timestamp).to_bytes(8, 'big')
+        # md_bytes += int(self.timestamp).to_bytes(8, 'big')
         return md_bytes
 
 
@@ -55,8 +55,10 @@ def get_md_from_pkt(pkt):
         sys.exit(1)
 
     if not hasattr(get_md_from_pkt, "static_time"):
-        get_md_from_pkt.static_time = 100000000
-    get_md_from_pkt.static_time += 100
+        tp = time.clock_gettime(time.CLOCK_MONOTONIC)
+        get_md_from_pkt.static_time = int(tp * 1_000_000_000)
+
+    get_md_from_pkt.static_time += 100  # Increment time by 100 nanoseconds
 
     md_elem.timestamp = get_md_from_pkt.static_time
 

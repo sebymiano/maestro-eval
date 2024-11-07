@@ -44,7 +44,7 @@ gen_trace() {
     # Loop over the total count of cores
     for ((i = 1; i <= num_cores; i++)); do
         echo "Generating pcap for number of cores: $i"
-
+        mkdir -p "${SCR_PCAPS_DIR}/${target}_${trace_type}_${pkt_size}_scr" > /dev/null 2>&1
         if [ "$target" == "cl" ]; then
             # Run the pcap generation script for each core index
             $POETRY_CMD $GEN_PCAP_CL_SCRIPT --input "$pcap" --output "${SCR_PCAPS_DIR}/${target}_${trace_type}_${pkt_size}_scr" --num_cores $i --dst_mac "$PCAP_DST_MAC" --pkt_len $pkt_size > >(sed "s/^/[cl_${i}core] /") 2>&1 &
