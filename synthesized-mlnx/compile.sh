@@ -8,8 +8,6 @@ CURRENT_EXPERIMENT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/nul
 FUNCTIONS_FILE="$CURRENT_EXPERIMENT_DIR/../bench/functions.sh"
 source $FUNCTIONS_FILE
 
-DUT_MLNX_SYNT_DIR=${DUT_EVAL_DIR}/synthesized-mlnx/nf-no-expire
-
 build_mlnx_original_nfs() {
     local nf_exe=$1
 
