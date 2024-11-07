@@ -3,7 +3,7 @@
 set -euo pipefail
 #set -x
 
-SCRIPT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
+CURRENT_EXPERIMENT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 
 FUNCTIONS_FILE="$CURRENT_EXPERIMENT_DIR/../bench/functions.sh"
 source $FUNCTIONS_FILE
