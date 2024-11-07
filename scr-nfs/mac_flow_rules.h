@@ -69,7 +69,7 @@ static int create_drop_filter(uint16_t port_id) {
 
   // Specify the source MAC address to match
   rte_memcpy(&eth_spec.src.addr_bytes, mac, RTE_ETHER_ADDR_LEN);
-  memset(&eth_mask.src.addr_bytes, 0xFF, RTE_ETHER_ADDR_LEN - 1);  // Full match on the source MAC
+//   memset(&eth_mask.src.addr_bytes, 0xFF, RTE_ETHER_ADDR_LEN - 1);  // Full match on the source MAC
 
   pattern[0].type = RTE_FLOW_ITEM_TYPE_ETH;
   pattern[0].spec = &eth_spec;
@@ -77,7 +77,8 @@ static int create_drop_filter(uint16_t port_id) {
   pattern[0].last = NULL;
   pattern[1].type = RTE_FLOW_ITEM_TYPE_END;
 
-  action[0].type = RTE_FLOW_ACTION_TYPE_END;
+  action[0].type = RTE_FLOW_ACTION_TYPE_DROP;
+  action[1].type = RTE_FLOW_ACTION_TYPE_END;
 
   // Validate the flow rule
   retval = rte_flow_validate(port_id, &attr, pattern, action, &error);
