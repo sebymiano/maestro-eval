@@ -34,7 +34,7 @@
 #include <rte_version.h>
 #include <rte_build_config.h>
 
-#include "mac-flow-rules.h"
+#include "mac_flow_rules.h"
 
 /**********************************************
  *
