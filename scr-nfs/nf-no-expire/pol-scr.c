@@ -2161,7 +2161,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
         int out_of_space__45 = !dchain_allocate_new_index((*dchain_ptr), &new_index__45, now);
 
         // 124
-        if (false == ((out_of_space__45) & (0u == number_of_freed_flows__32))) {
+        if (false == ((out_of_space__45))) {
           uint8_t* vector_value_out = 0u;
           vector_borrow((*vector_ptr), new_index__45, (void**)(&vector_value_out));
           vector_value_out[0u] = ipv4_header_1->dst_addr & 0xff;
