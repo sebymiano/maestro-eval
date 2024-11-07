@@ -34,6 +34,9 @@
 #include <rte_version.h>
 #include <rte_build_config.h>
 
+#define MD_PREFETCH_DISTANCE 3
+#define PKT_PREFETCH_DISTANCE 3
+
 // Define a structure for MAC-to-queue mapping
 struct mac_to_queue_map {
     uint8_t mac[RTE_ETHER_ADDR_LEN];

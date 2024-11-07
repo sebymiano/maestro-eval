@@ -1120,9 +1120,8 @@ uint32_t spread_data_among_cores(uint32_t capacity) {
  **********************************************/
 
 bool nf_init(void);
-int nf_process(uint16_t device, uint8_t *buffer, uint16_t packet_length,
-               vigor_time_t now);
-int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now);
+int nf_process(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleChain **dchain_ptr, struct Vector **vector_1_ptr, uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now);
+int nf_process_scr(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleChain **dchain_ptr, struct Vector **vector_1_ptr, uint16_t device, struct metadata_elem *state_elem, int64_t now);
 
 #define FLOOD_FRAME ((uint16_t)-1)
 
@@ -1250,6 +1249,11 @@ void print_md(uint16_t device, uint16_t lcore_id, struct metadata_elem *md) {
   printf("\n");
 }
 
+RTE_DEFINE_PER_LCORE(struct Map*, _map);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
+RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
+
 static void worker_main(void) {
   const unsigned lcore_id = rte_lcore_id();
   const uint16_t queue_id = lcores_conf[lcore_id].queue_id;
@@ -1267,6 +1271,11 @@ static void worker_main(void) {
     rte_exit(EXIT_FAILURE, "We assume there will be exactly 2 devices.");
   }
 
+  struct Map** map_ptr = &RTE_PER_LCORE(_map);
+  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+
   while (1) {
     unsigned VIGOR_DEVICES_COUNT = rte_eth_dev_count_avail();
 
@@ -1280,6 +1289,11 @@ static void worker_main(void) {
       uint16_t tx_count = 0;
 
       for (uint16_t n = 0; n < rx_count; n++) {
+        for (uint16_t p = 1; p <= PKT_PREFETCH_DISTANCE; p++) {
+          if (n + p < rx_count) {
+              rte_prefetch_non_temporal(rte_pktmbuf_mtod(mbufs[n + p], void *));
+          }
+        }
         uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
         vigor_time_t VIGOR_NOW = current_time();
         
@@ -1300,14 +1314,20 @@ static void worker_main(void) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
           // print_md(mbufs[n]->port, lcore_id, md);
 
-          nf_process_scr(mbufs[n]->port, md, md->timestamp);
+          for (int p = 1; p <= MD_PREFETCH_DISTANCE; p++) {
+              if (i + p < NUM_CORES - 1) {
+                  rte_prefetch_non_temporal(md_start + (i + p) * sizeof(struct metadata_elem));
+              }
+          }
+
+          nf_process_scr(map_ptr, vector_ptr, dchain_ptr, vector_1_ptr, mbufs[n]->port, md, md->timestamp);
           VIGOR_NOW = md->timestamp + 10;
         }
 
         offset = dummy_header_size + md_size;
         uint8_t *current_pkt_data = data + offset;
         
-        uint16_t dst_device = nf_process(mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
+        uint16_t dst_device = nf_process(map_ptr, vector_ptr, dchain_ptr, vector_1_ptr, mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
 
         if (dst_device == VIGOR_DEVICE) {
           rte_pktmbuf_free(mbufs[n]);
@@ -1894,10 +1914,6 @@ bool ip_addr_eq(void* a, void* b) ;
 uint32_t ip_addr_hash(void* obj) ;
 void ip_addr_allocate(void* obj) ;
 void DynamicValue_allocate(void* obj) ;
-RTE_DEFINE_PER_LCORE(struct Map*, _map);
-RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
-RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
-RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
 
 bool nf_init() {
   struct Map** map_ptr = &RTE_PER_LCORE(_map);
@@ -1957,12 +1973,7 @@ bool nf_init() {
 
 }
 
-int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now) {
-  struct Map** map_ptr = &RTE_PER_LCORE(_map);
-  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
-  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
-
+int nf_process_scr(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleChain **dchain_ptr, struct Vector **vector_1_ptr, uint16_t device, struct metadata_elem *state_elem, int64_t now) {
   // 123
   // 124
   // 125
@@ -2116,11 +2127,7 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
 
 }
 
-int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
-  struct Map** map_ptr = &RTE_PER_LCORE(_map);
-  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
-  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+int nf_process(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleChain **dchain_ptr, struct Vector **vector_1_ptr, uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
 
   // 123

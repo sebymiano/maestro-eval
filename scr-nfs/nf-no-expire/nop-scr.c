@@ -1261,6 +1261,12 @@ static void worker_main(void) {
       uint16_t tx_count = 0;
 
       for (uint16_t n = 0; n < rx_count; n++) {
+        for (uint16_t p = 1; p <= PKT_PREFETCH_DISTANCE; p++) {
+          if (n + p < rx_count) {
+              rte_prefetch_non_temporal(rte_pktmbuf_mtod(mbufs[n + p], void *));
+          }
+        }
+        
         uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
         vigor_time_t VIGOR_NOW = current_time();
         
@@ -1279,6 +1285,12 @@ static void worker_main(void) {
 
         for (int i = 0; i < NUM_CORES - 1; i++) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
+
+          for (int p = 1; p <= MD_PREFETCH_DISTANCE; p++) {
+              if (i + p < NUM_CORES - 1) {
+                  rte_prefetch_non_temporal(md_start + (i + p) * sizeof(struct metadata_elem));
+              }
+          }
 
           nf_process_scr(mbufs[n]->port, md, md->timestamp);
           VIGOR_NOW = md->timestamp + 10;
