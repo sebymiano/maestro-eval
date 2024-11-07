@@ -16,7 +16,7 @@ PCAP_FOLDER_NOP="nop_single_64_scr"
 PCAP_FOLDER_PSD="psd_single_64_scr"
 PCAP_FOLDER_POL="pol_single_64_scr"
 
-DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs
+DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs/nf-no-expire
 
 build_nf_scr() {
 	local nf_exe=$1
