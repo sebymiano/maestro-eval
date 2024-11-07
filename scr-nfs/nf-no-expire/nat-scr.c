@@ -34,6 +34,8 @@
 #include <rte_version.h>
 #include <rte_build_config.h>
 
+#include "mac_flow_rules.h"
+
 /**********************************************
  *
  *         State Compute Replication
@@ -66,13 +68,6 @@
   #define RSS_NONFRAG_IPV4_UDP ETH_RSS_NONFRAG_IPV4_UDP
   
 #endif
-
-// Define a structure for MAC-to-queue mapping
-struct mac_to_queue_map {
-    uint8_t mac[RTE_ETHER_ADDR_LEN];
-    uint16_t queue_id;
-    struct rte_flow *flow;  // Pointer to the created flow rule
-};
 
 // Array to store MAC-to-queue mappings for each lcore
 static struct mac_to_queue_map mac_map[RTE_MAX_LCORE];
@@ -1163,99 +1158,6 @@ void flood(struct rte_mbuf *packet, uint16_t nb_devices, uint16_t queue_id) {
   }
 }
 
-// Function to create a flow rule for each source MAC address
-static int create_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_map, size_t mac_map_size) {
-    struct rte_flow_attr attr;
-    struct rte_flow_item pattern[2] = {0};
-    struct rte_flow_action action[2] = {0};
-    struct rte_flow_error error;
-    int retval;
-
-    // Initialize the attributes to match on incoming packets
-    memset(&attr, 0, sizeof(attr));
-    attr.ingress = 1;  // Match on ingress packets
-
-    for (size_t i = 0; i < mac_map_size; i++) {
-        // Set up the match pattern for source MAC address
-        struct rte_flow_item_eth eth_spec;
-        struct rte_flow_item_eth eth_mask;
-
-        memset(&eth_spec, 0, sizeof(eth_spec));
-        memset(&eth_mask, 0, sizeof(eth_mask));
-
-        // Specify the source MAC address to match
-        rte_memcpy(&eth_spec.src.addr_bytes, mac_map[i].mac, RTE_ETHER_ADDR_LEN);
-        memset(&eth_mask.src.addr_bytes, 0xFF, RTE_ETHER_ADDR_LEN);  // Full match on the source MAC
-
-        pattern[0].type = RTE_FLOW_ITEM_TYPE_ETH;
-        pattern[0].spec = &eth_spec;
-        pattern[0].mask = &eth_mask;
-        pattern[0].last = NULL;
-        pattern[1].type = RTE_FLOW_ITEM_TYPE_END;
-
-        // Define the action to direct the packet to a specific RX queue
-        struct rte_flow_action_queue queue = {
-            .index = mac_map[i].queue_id
-        };
-
-        action[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
-        action[0].conf = &queue;
-        action[1].type = RTE_FLOW_ACTION_TYPE_END;
-
-        printf("Validaing flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
-               mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-               mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5]);
-        // Validate the flow rule
-        retval = rte_flow_validate(port_id, &attr, pattern, action, &error);
-        if (retval != 0) {
-            fprintf(stderr, "Error validating flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X %s\n",
-                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
-                    error.message);
-            return -1;
-        }
-
-        // Create the flow rule
-        struct rte_flow *flow = rte_flow_create(port_id, &attr, pattern, action, &error);
-        if (!flow) {
-            fprintf(stderr, "Error creating flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X: %s\n",
-                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
-                    error.message);
-            return -1; 
-        } else {
-            mac_map[i].flow = flow;  // Store the flow pointer
-            printf("Created flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X directing to queue %d\n",
-                   mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                   mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
-                   mac_map[i].queue_id);
-        }
-    }
-    return 0;
-}
-
-// Function to destroy all flow rules created by create_mac_filter
-static void destroy_mac_filter(uint16_t port_id, struct mac_to_queue_map *mac_map, size_t mac_map_size) {
-    struct rte_flow_error error;
-
-    for (size_t i = 0; i < mac_map_size; i++) {
-        if (mac_map[i].flow) {
-            printf("Destroying flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X\n",
-                    mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                    mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5]);
-            int retval = rte_flow_destroy(port_id, mac_map[i].flow, &error);
-            if (retval != 0) {
-                fprintf(stderr, "Error destroying flow rule for MAC %02X:%02X:%02X:%02X:%02X:%02X: %s\n",
-                        mac_map[i].mac[0], mac_map[i].mac[1], mac_map[i].mac[2],
-                        mac_map[i].mac[3], mac_map[i].mac[4], mac_map[i].mac[5],
-                        error.message);
-            } else {
-                mac_map[i].flow = NULL;  // Clear the flow pointer after destruction
-            }
-        }
-    }
-}
-
 // Initializes the given device using the given memory pool
 static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   int retval;
@@ -1313,9 +1215,17 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
     return retval;
   }
 
+  cleanup_all_rules(device);
   // Create MAC-based filtering rules
   retval = create_mac_filter(device, mac_map, rxq);
   if (retval != 0) {
+      printf("Error creating MAC filter\n");
+      return retval;
+  }
+
+  retval = create_drop_filter(device);
+  if (retval != 0) {
+      printf("Error creating drop filter\n");
       return retval;
   }
 
@@ -1856,7 +1766,8 @@ void rss_lut_balance(unsigned device, const char *pcap_fname) {
 
 static void signal_handler(int signum) {
   printf("Received signal %d, exiting...\n", signum);
-  destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
+  cleanup_all_rules(0);
+  cleanup_all_rules(1);
   exit(0);
 }
 
@@ -1908,7 +1819,7 @@ int main(int argc, char **argv) {
     if (ret == 0) {
       printf("Initialized device %" PRIu16 ".\n", device);
     } else {
-      destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
+      cleanup_all_rules(device);
       rte_exit(EXIT_FAILURE, "Cannot init device %" PRIu16 ": %d", device, ret);
     }
   }
@@ -1925,7 +1836,9 @@ int main(int argc, char **argv) {
   printf("Launching also worker thread. \n");
   worker_main();
 
-  destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
+  cleanup_all_rules(0);
+  cleanup_all_rules(1);
+  // destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
   return 0;
 }
 
