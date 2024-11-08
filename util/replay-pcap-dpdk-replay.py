@@ -57,6 +57,7 @@ wait_enter: False
 slow_mode: False
 convert_to_json: True
 use_mac_filter: False
+enable_jumbo: False
 nb_rx_queues: 16
 nb_rx_cores: 4
 stats:
@@ -92,6 +93,7 @@ wait_enter: False
 slow_mode: False
 convert_to_json: True
 use_mac_filter: True
+enable_jumbo: False
 nb_rx_queues: {{num_rx_queues}}
 nb_rx_cores: 4
 stats:
