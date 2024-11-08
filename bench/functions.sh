@@ -171,9 +171,9 @@ run_nf() {
 	local pcap="${3:-}"
 
 	if [[ ! -z "$pcap" ]]; then
-		dut_run_background "sudo ./$nf_exe --lcores $lcores -w $DUT_TX_DEV -w $DUT_RX_DEV -- $DUT_PCAPS_DIR/$pcap" "$DUT_SYNTHESIZED_DIR"
+		dut_run_background "sudo ./$nf_exe --lcores $lcores -a $DUT_TX_DEV -a $DUT_RX_DEV -- $DUT_PCAPS_DIR/$pcap" "$DUT_SYNTHESIZED_DIR"
 	else
-		dut_run_background "sudo ./$nf_exe --lcores $lcores -w $DUT_TX_DEV -w $DUT_RX_DEV" "$DUT_SYNTHESIZED_DIR"
+		dut_run_background "sudo ./$nf_exe --lcores $lcores -a $DUT_TX_DEV -a $DUT_RX_DEV" "$DUT_SYNTHESIZED_DIR"
 	fi
 }
 
