@@ -2206,18 +2206,36 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             tcpudp_header_1->dst_port = vector_value_out[0ul];
             ipv4_header_1->hdr_checksum = checksum__43 & 0xffff;
             ipv4_header_1->dst_addr = vector_value_out[4ul];
+            #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+            ether_header_1->dst_addr.addr_bytes[0] = 1u;
+            ether_header_1->dst_addr.addr_bytes[1] = 35u;
+            ether_header_1->dst_addr.addr_bytes[2] = 69u;
+            ether_header_1->dst_addr.addr_bytes[3] = 103u;
+            ether_header_1->dst_addr.addr_bytes[4] = 137u;
+            ether_header_1->dst_addr.addr_bytes[5] = 0u;
+
+            // Set source MAC address: b8:3f:d2:13:08:db
+            ether_header_1->src_addr.addr_bytes[0] = 0u;
+            ether_header_1->src_addr.addr_bytes[1] = 0u;
+            ether_header_1->src_addr.addr_bytes[2] = 0u;
+            ether_header_1->src_addr.addr_bytes[3] = 0u;
+            ether_header_1->src_addr.addr_bytes[4] = 0u;
+            ether_header_1->src_addr.addr_bytes[5] = 0u;
+            #else
             ether_header_1->d_addr.addr_bytes[0ul] = 1u;
             ether_header_1->d_addr.addr_bytes[1ul] = 35u;
             ether_header_1->d_addr.addr_bytes[2ul] = 69u;
             ether_header_1->d_addr.addr_bytes[3ul] = 103u;
             ether_header_1->d_addr.addr_bytes[4ul] = 137u;
             ether_header_1->d_addr.addr_bytes[5ul] = 0u;
+
             ether_header_1->s_addr.addr_bytes[0ul] = 0u;
             ether_header_1->s_addr.addr_bytes[1ul] = 0u;
             ether_header_1->s_addr.addr_bytes[2ul] = 0u;
             ether_header_1->s_addr.addr_bytes[3ul] = 0u;
             ether_header_1->s_addr.addr_bytes[4ul] = 0u;
             ether_header_1->s_addr.addr_bytes[5ul] = 0u;
+            #endif
             return 0;
           }
 
@@ -2291,6 +2309,22 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             tcpudp_header_1->src_port = new_index__71 & 0xffff;
             ipv4_header_1->hdr_checksum = checksum__77 & 0xffff;
             ipv4_header_1->src_addr = 0u;
+            #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+            ether_header_1->dst_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->dst_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->dst_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->dst_addr.addr_bytes[3] = 0x13;
+            ether_header_1->dst_addr.addr_bytes[4] = 0x08;
+            ether_header_1->dst_addr.addr_bytes[5] = 0x43;
+
+            // Set source MAC address: b8:3f:d2:13:08:db
+            ether_header_1->src_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->src_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->src_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->src_addr.addr_bytes[3] = 0x13;
+            ether_header_1->src_addr.addr_bytes[4] = 0x08;
+            ether_header_1->src_addr.addr_bytes[5] = 0xdb;
+            #else
             ether_header_1->d_addr.addr_bytes[0] = 0xb8;
             ether_header_1->d_addr.addr_bytes[1] = 0x3f;
             ether_header_1->d_addr.addr_bytes[2] = 0xd2;
@@ -2298,13 +2332,13 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             ether_header_1->d_addr.addr_bytes[4] = 0x08;
             ether_header_1->d_addr.addr_bytes[5] = 0x43;
 
-            // Set source MAC address: b8:3f:d2:13:08:db
             ether_header_1->s_addr.addr_bytes[0] = 0xb8;
             ether_header_1->s_addr.addr_bytes[1] = 0x3f;
             ether_header_1->s_addr.addr_bytes[2] = 0xd2;
             ether_header_1->s_addr.addr_bytes[3] = 0x13;
             ether_header_1->s_addr.addr_bytes[4] = 0x08;
             ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+            #endif
             return 1;
           }
 
@@ -2323,20 +2357,36 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
           tcpudp_header_1->src_port = map_value_out & 0xffff;
           ipv4_header_1->hdr_checksum = checksum__95 & 0xffff;
           ipv4_header_1->src_addr = 0u;
-          ether_header_1->d_addr.addr_bytes[0] = 0xb8;
-            ether_header_1->d_addr.addr_bytes[1] = 0x3f;
-            ether_header_1->d_addr.addr_bytes[2] = 0xd2;
-            ether_header_1->d_addr.addr_bytes[3] = 0x13;
-            ether_header_1->d_addr.addr_bytes[4] = 0x08;
-            ether_header_1->d_addr.addr_bytes[5] = 0x43;
+          #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+          ether_header_1->dst_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->dst_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->dst_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->dst_addr.addr_bytes[3] = 0x13;
+          ether_header_1->dst_addr.addr_bytes[4] = 0x08;
+          ether_header_1->dst_addr.addr_bytes[5] = 0x43;
 
-            // Set source MAC address: b8:3f:d2:13:08:db
-            ether_header_1->s_addr.addr_bytes[0] = 0xb8;
-            ether_header_1->s_addr.addr_bytes[1] = 0x3f;
-            ether_header_1->s_addr.addr_bytes[2] = 0xd2;
-            ether_header_1->s_addr.addr_bytes[3] = 0x13;
-            ether_header_1->s_addr.addr_bytes[4] = 0x08;
-            ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+          // Set source MAC address: b8:3f:d2:13:08:db
+          ether_header_1->src_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->src_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->src_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->src_addr.addr_bytes[3] = 0x13;
+          ether_header_1->src_addr.addr_bytes[4] = 0x08;
+          ether_header_1->src_addr.addr_bytes[5] = 0xdb;
+          #else
+          ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->d_addr.addr_bytes[3] = 0x13;
+          ether_header_1->d_addr.addr_bytes[4] = 0x08;
+          ether_header_1->d_addr.addr_bytes[5] = 0x43;
+
+          ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->s_addr.addr_bytes[3] = 0x13;
+          ether_header_1->s_addr.addr_bytes[4] = 0x08;
+          ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+          #endif
           return 1;
         } // !(0u == map_has_this_key__68)
 

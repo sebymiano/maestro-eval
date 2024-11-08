@@ -30,6 +30,35 @@
 #include <rte_per_lcore.h>
 #include <rte_thash.h>
 
+#define API_OLDEST_THAN(year, month)                                           \
+    ((defined RTE_VER_YEAR && RTE_VER_YEAR == year && defined RTE_VER_MONTH && \
+      RTE_VER_MONTH < month) ||                                                \
+     defined RTE_VER_YEAR && RTE_VER_YEAR < year)
+
+#define API_AT_LEAST_AS_RECENT_AS(year, month)                                 \
+    ((defined RTE_VER_YEAR && RTE_VER_YEAR == year && defined RTE_VER_MONTH && \
+      RTE_VER_MONTH >= month) ||                                               \
+     defined RTE_VER_YEAR && RTE_VER_YEAR >= year)
+
+#if API_AT_LEAST_AS_RECENT_AS(22, 03)
+  #define MQ_RX_RSS RTE_ETH_MQ_RX_RSS
+  #define MQ_RX_NONE RTE_ETH_MQ_RX_NONE
+  #define RSS_RETA_SIZE_512 RTE_ETH_RSS_RETA_SIZE_512
+  #define RETA_GROUP_SIZE RTE_ETH_RETA_GROUP_SIZE
+  #define LCORE_FOREACH_WORKER RTE_LCORE_FOREACH_WORKER
+  #define RSS_NONFRAG_IPV4_TCP RTE_ETH_RSS_NONFRAG_IPV4_TCP
+  #define RSS_NONFRAG_IPV4_UDP RTE_ETH_RSS_NONFRAG_IPV4_UDP
+#else
+  #define MQ_RX_RSS ETH_MQ_RX_RSS
+  #define MQ_RX_NONE ETH_MQ_RX_NONE
+  #define RSS_RETA_SIZE_512 ETH_RSS_RETA_SIZE_512
+  #define RETA_GROUP_SIZE RTE_RETA_GROUP_SIZE
+  #define LCORE_FOREACH_WORKER RTE_LCORE_FOREACH_SLAVE
+  #define RSS_NONFRAG_IPV4_TCP ETH_RSS_NONFRAG_IPV4_TCP
+  #define RSS_NONFRAG_IPV4_UDP ETH_RSS_NONFRAG_IPV4_UDP
+  
+#endif
+
 /**********************************************
  *
  *                   LIBVIG
@@ -1361,10 +1390,10 @@ struct rte_ether_hdr;
 #define IP_MIN_SIZE_WORDS 5
 #define WORD_SIZE 4
 
-#define RETA_CONF_SIZE (ETH_RSS_RETA_SIZE_512 / RTE_RETA_GROUP_SIZE)
+#define RETA_CONF_SIZE (RSS_RETA_SIZE_512 / RETA_GROUP_SIZE)
 
 typedef struct {
-  uint16_t lut[ETH_RSS_RETA_SIZE_512];
+  uint16_t lut[RSS_RETA_SIZE_512];
   bool set;
 } reta_t;
 
@@ -1384,12 +1413,12 @@ void set_reta(uint16_t device) {
   memset(reta_conf, 0, sizeof(reta_conf));
 
   for (uint16_t bucket = 0; bucket < dev_info.reta_size; bucket++) {
-    reta_conf[bucket / RTE_RETA_GROUP_SIZE].mask = UINT64_MAX;
+    reta_conf[bucket / RETA_GROUP_SIZE].mask = UINT64_MAX;
   }
 
   for (uint16_t bucket = 0; bucket < dev_info.reta_size; bucket++) {
-    uint32_t reta_id = bucket / RTE_RETA_GROUP_SIZE;
-    uint32_t reta_pos = bucket % RTE_RETA_GROUP_SIZE;
+    uint32_t reta_id = bucket / RETA_GROUP_SIZE;
+    uint32_t reta_pos = bucket % RETA_GROUP_SIZE;
     reta_conf[reta_id].reta[reta_pos] = retas_per_device[device].lut[bucket];
   }
 
@@ -1919,7 +1948,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   // device_conf passed to rte_eth_dev_configure cannot be NULL
   struct rte_eth_conf device_conf = { 0 };
   // device_conf.rxmode.hw_strip_crc = 1;
-  device_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+  device_conf.rxmode.mq_mode = MQ_RX_RSS;
   device_conf.rx_adv_conf.rss_conf = rss_conf[device];
 
   retval = rte_eth_dev_configure(device, num_queues, num_queues, &device_conf);
@@ -2055,7 +2084,7 @@ struct rss_bucket_t {
 
 struct rss_buckets_t {
   uint16_t num_buckets;
-  struct rss_bucket_t buckets[ETH_RSS_RETA_SIZE_512];
+  struct rss_bucket_t buckets[RSS_RETA_SIZE_512];
 };
 
 struct rss_core_t {
@@ -2107,7 +2136,7 @@ int cmp_cores_decreasing(const void *a, const void *b, void *args) {
 }
 
 void rss_lut_balancer_init_buckets(struct rss_buckets_t *buckets) {
-  buckets->num_buckets = ETH_RSS_RETA_SIZE_512;
+  buckets->num_buckets = RSS_RETA_SIZE_512;
   for (int b = 0; b < buckets->num_buckets; b++) {
     buckets->buckets[b].id = b;
     buckets->buckets[b].counter = 0;
@@ -2119,7 +2148,7 @@ void rss_lut_balancer_init_lut(unsigned device) {
 
   // Set LUT default values.
   retas_per_device[device].set = true;
-  for (int b = 0; b < ETH_RSS_RETA_SIZE_512; b++) {
+  for (int b = 0; b < RSS_RETA_SIZE_512; b++) {
     retas_per_device[device].lut[b] = b % num_cores;
   }
 }
@@ -2194,7 +2223,7 @@ bool rss_lut_balancer_migrate_bucket(struct rss_cores_t *cores,
   uint16_t src_num_buckets = cores->cores[src_core].buckets.num_buckets;
   uint16_t dst_num_buckets = cores->cores[dst_core].buckets.num_buckets;
 
-  if (src_num_buckets == 1 || dst_num_buckets == ETH_RSS_RETA_SIZE_512) {
+  if (src_num_buckets == 1 || dst_num_buckets == RSS_RETA_SIZE_512) {
     return false;
   }
 
@@ -2404,7 +2433,7 @@ struct rss_buckets_t rss_lut_buckets_from_pcap(unsigned device,
 
     // As per X710/e810
     int chosen_bucket = hash & 0x1ff;
-    assert(chosen_bucket < ETH_RSS_RETA_SIZE_512);
+    assert(chosen_bucket < RSS_RETA_SIZE_512);
     assert(buckets.buckets[chosen_bucket].id == chosen_bucket);
     buckets.buckets[chosen_bucket].counter++;
   }
@@ -2501,7 +2530,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  RTE_LCORE_FOREACH_SLAVE(lcore_id) {
+  LCORE_FOREACH_WORKER(lcore_id) {
     rte_eal_remote_launch((lcore_function_t *)worker_main, NULL, lcore_id);
   }
 
@@ -2571,12 +2600,12 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
   {
     .rss_key = hash_key_0,
     .rss_key_len = RSS_HASH_KEY_LENGTH,
-    .rss_hf = ETH_RSS_NONFRAG_IPV4_TCP | ETH_RSS_NONFRAG_IPV4_UDP
+    .rss_hf = RSS_NONFRAG_IPV4_TCP | RSS_NONFRAG_IPV4_UDP
   },
   {
     .rss_key = hash_key_1,
     .rss_key_len = RSS_HASH_KEY_LENGTH,
-    .rss_hf = ETH_RSS_NONFRAG_IPV4_TCP | ETH_RSS_NONFRAG_IPV4_UDP
+    .rss_hf = RSS_NONFRAG_IPV4_TCP | RSS_NONFRAG_IPV4_UDP
   }
 };
 
@@ -2702,18 +2731,36 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
           vector_borrow(vector_1, map_value_out, (void**)(&vector_value_out));
           vector_return(vector_1, map_value_out, vector_value_out);
           dchain_tm_rejuvenate_index(dchain, map_value_out, now);
-          ether_header_1->d_addr.addr_bytes[0ul] = 1u;
-          ether_header_1->d_addr.addr_bytes[1ul] = 35u;
-          ether_header_1->d_addr.addr_bytes[2ul] = 69u;
-          ether_header_1->d_addr.addr_bytes[3ul] = 103u;
-          ether_header_1->d_addr.addr_bytes[4ul] = 137u;
-          ether_header_1->d_addr.addr_bytes[5ul] = 0u;
-          ether_header_1->s_addr.addr_bytes[0ul] = 0u;
-          ether_header_1->s_addr.addr_bytes[1ul] = 0u;
-          ether_header_1->s_addr.addr_bytes[2ul] = 0u;
-          ether_header_1->s_addr.addr_bytes[3ul] = 0u;
-          ether_header_1->s_addr.addr_bytes[4ul] = 0u;
-          ether_header_1->s_addr.addr_bytes[5ul] = 0u;
+          #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+          ether_header_1->dst_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->dst_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->dst_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->dst_addr.addr_bytes[3] = 0x13;
+          ether_header_1->dst_addr.addr_bytes[4] = 0x08;
+          ether_header_1->dst_addr.addr_bytes[5] = 0x43;
+
+          // Set source MAC address: b8:3f:d2:13:08:db
+          ether_header_1->src_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->src_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->src_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->src_addr.addr_bytes[3] = 0x13;
+          ether_header_1->src_addr.addr_bytes[4] = 0x08;
+          ether_header_1->src_addr.addr_bytes[5] = 0xdb;
+          #else
+          ether_header_1->d_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->d_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->d_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->d_addr.addr_bytes[3] = 0x13;
+          ether_header_1->d_addr.addr_bytes[4] = 0x08;
+          ether_header_1->d_addr.addr_bytes[5] = 0x43;
+
+          ether_header_1->s_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->s_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->s_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->s_addr.addr_bytes[3] = 0x13;
+          ether_header_1->s_addr.addr_bytes[4] = 0x08;
+          ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+          #endif
           return 0;
         } // !(0u == map_has_this_key__39)
 
@@ -2772,6 +2819,22 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             vector_value_out_1[2u] = 0u;
             vector_value_out_1[3u] = 0u;
             vector_return(vector_1, new_index__64, vector_value_out_1);
+            #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+            ether_header_1->dst_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->dst_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->dst_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->dst_addr.addr_bytes[3] = 0x13;
+            ether_header_1->dst_addr.addr_bytes[4] = 0x08;
+            ether_header_1->dst_addr.addr_bytes[5] = 0x43;
+
+            // Set source MAC address: b8:3f:d2:13:08:db
+            ether_header_1->src_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->src_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->src_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->src_addr.addr_bytes[3] = 0x13;
+            ether_header_1->src_addr.addr_bytes[4] = 0x08;
+            ether_header_1->src_addr.addr_bytes[5] = 0xdb;
+            #else
             ether_header_1->d_addr.addr_bytes[0] = 0xb8;
             ether_header_1->d_addr.addr_bytes[1] = 0x3f;
             ether_header_1->d_addr.addr_bytes[2] = 0xd2;
@@ -2779,18 +2842,34 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             ether_header_1->d_addr.addr_bytes[4] = 0x08;
             ether_header_1->d_addr.addr_bytes[5] = 0x43;
 
-            // Set source MAC address: b8:3f:d2:13:08:db
             ether_header_1->s_addr.addr_bytes[0] = 0xb8;
             ether_header_1->s_addr.addr_bytes[1] = 0x3f;
             ether_header_1->s_addr.addr_bytes[2] = 0xd2;
             ether_header_1->s_addr.addr_bytes[3] = 0x13;
             ether_header_1->s_addr.addr_bytes[4] = 0x08;
             ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+            #endif
             return 1;
           }
 
           // 123
           else {
+            #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+            ether_header_1->dst_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->dst_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->dst_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->dst_addr.addr_bytes[3] = 0x13;
+            ether_header_1->dst_addr.addr_bytes[4] = 0x08;
+            ether_header_1->dst_addr.addr_bytes[5] = 0x43;
+
+            // Set source MAC address: b8:3f:d2:13:08:db
+            ether_header_1->src_addr.addr_bytes[0] = 0xb8;
+            ether_header_1->src_addr.addr_bytes[1] = 0x3f;
+            ether_header_1->src_addr.addr_bytes[2] = 0xd2;
+            ether_header_1->src_addr.addr_bytes[3] = 0x13;
+            ether_header_1->src_addr.addr_bytes[4] = 0x08;
+            ether_header_1->src_addr.addr_bytes[5] = 0xdb;
+            #else
             ether_header_1->d_addr.addr_bytes[0] = 0xb8;
             ether_header_1->d_addr.addr_bytes[1] = 0x3f;
             ether_header_1->d_addr.addr_bytes[2] = 0xd2;
@@ -2798,13 +2877,13 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             ether_header_1->d_addr.addr_bytes[4] = 0x08;
             ether_header_1->d_addr.addr_bytes[5] = 0x43;
 
-            // Set source MAC address: b8:3f:d2:13:08:db
             ether_header_1->s_addr.addr_bytes[0] = 0xb8;
             ether_header_1->s_addr.addr_bytes[1] = 0x3f;
             ether_header_1->s_addr.addr_bytes[2] = 0xd2;
             ether_header_1->s_addr.addr_bytes[3] = 0x13;
             ether_header_1->s_addr.addr_bytes[4] = 0x08;
             ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+            #endif
             return 1;
           } // !(false == ((out_of_space__64) & (0u == number_of_freed_flows__27)))
 
@@ -2813,6 +2892,22 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
         // 124
         else {
           dchain_tm_rejuvenate_index(dchain, map_value_out, now);
+          #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+          ether_header_1->dst_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->dst_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->dst_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->dst_addr.addr_bytes[3] = 0x13;
+          ether_header_1->dst_addr.addr_bytes[4] = 0x08;
+          ether_header_1->dst_addr.addr_bytes[5] = 0x43;
+
+          // Set source MAC address: b8:3f:d2:13:08:db
+          ether_header_1->src_addr.addr_bytes[0] = 0xb8;
+          ether_header_1->src_addr.addr_bytes[1] = 0x3f;
+          ether_header_1->src_addr.addr_bytes[2] = 0xd2;
+          ether_header_1->src_addr.addr_bytes[3] = 0x13;
+          ether_header_1->src_addr.addr_bytes[4] = 0x08;
+          ether_header_1->src_addr.addr_bytes[5] = 0xdb;
+          #else
           ether_header_1->d_addr.addr_bytes[0] = 0xb8;
           ether_header_1->d_addr.addr_bytes[1] = 0x3f;
           ether_header_1->d_addr.addr_bytes[2] = 0xd2;
@@ -2820,13 +2915,13 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
           ether_header_1->d_addr.addr_bytes[4] = 0x08;
           ether_header_1->d_addr.addr_bytes[5] = 0x43;
 
-          // Set source MAC address: b8:3f:d2:13:08:db
           ether_header_1->s_addr.addr_bytes[0] = 0xb8;
           ether_header_1->s_addr.addr_bytes[1] = 0x3f;
           ether_header_1->s_addr.addr_bytes[2] = 0xd2;
           ether_header_1->s_addr.addr_bytes[3] = 0x13;
           ether_header_1->s_addr.addr_bytes[4] = 0x08;
           ether_header_1->s_addr.addr_bytes[5] = 0xdb;
+          #endif
           return 1;
         } // !(0u == map_has_this_key__61)
 

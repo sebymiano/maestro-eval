@@ -161,7 +161,7 @@ build_nf() {
 		fi
 
 		dut_run "$gen_nf_cmd" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
-		dut_run "SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
+		dut_run "PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
 	fi
 }
 

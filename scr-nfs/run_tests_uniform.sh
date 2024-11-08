@@ -25,7 +25,7 @@ build_nf_scr() {
 	dut_run "rm $DUT_SYNTHESIZED_DIR/${nf_exe} 2> /dev/null || true"
 	dut_run "cp $DUT_SCR_DIR/$nf_src $DUT_SYNTHESIZED_DIR/${nf_src}"
 
-	dut_run "CFLAGS=\"-I${CURRENT_EXPERIMENT_DIR}\" SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
+	dut_run "PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig CFLAGS=\"-I${CURRENT_EXPERIMENT_DIR}\" SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
 }
 
 run_balanced_bench_scr() {
