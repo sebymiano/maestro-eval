@@ -17,7 +17,7 @@ build_mlnx_original_nfs() {
     dut_run "rm $DUT_SYNTHESIZED_DIR/${nf_exe} 2> /dev/null || true"
     dut_run "cp $DUT_MLNX_SYNT_DIR/$nf_src $DUT_SYNTHESIZED_DIR/${nf_src}"
 
-    dut_run "SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
+    dut_run "PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig SRC=$nf_src make -f $DUT_DPDK_MAKEFILE" $DUT_SYNTHESIZED_DIR >> $CURRENT_LOG 2>&1
 }
 
 build_mlnx_original_nfs "cl-sn"
