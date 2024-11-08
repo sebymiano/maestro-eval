@@ -2139,7 +2139,7 @@ int nf_process(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleCh
   // 129
   if ((8u == ether_header_1->ether_type) & (20ul <= (4294967282u + packet_length))) {
     struct rte_ipv4_hdr* ipv4_header_1 = (struct rte_ipv4_hdr*)(packet + 14u);
-    // int number_of_freed_flows__32 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 10000000000ul);
+    int number_of_freed_flows__32 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 10000000000ul);
 
     // 123
     if (0u != device) {
@@ -2168,7 +2168,7 @@ int nf_process(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleCh
         int out_of_space__45 = !dchain_allocate_new_index((*dchain_ptr), &new_index__45, now);
 
         // 124
-        if (false == ((out_of_space__45))) {
+        if (false == ((out_of_space__45) & (0u == number_of_freed_flows__32))) {
           uint8_t* vector_value_out = 0u;
           vector_borrow((*vector_ptr), new_index__45, (void**)(&vector_value_out));
           vector_value_out[0u] = ipv4_header_1->dst_addr & 0xff;
@@ -2212,7 +2212,7 @@ int nf_process(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleCh
       // 128
       // 129
       else {
-        // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+        dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
         uint8_t* vector_value_out = 0u;
         vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
         vector_value_out[0u] = 10000000000ul - packet_length;
