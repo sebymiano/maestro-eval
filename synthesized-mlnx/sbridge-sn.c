@@ -1914,12 +1914,21 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
   uint8_t map_key[8];
+  #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+  map_key[0u] = ether_header_1->dst_addr.addr_bytes[0ul];
+  map_key[1u] = ether_header_1->dst_addr.addr_bytes[1ul];
+  map_key[2u] = ether_header_1->dst_addr.addr_bytes[2ul];
+  map_key[3u] = ether_header_1->dst_addr.addr_bytes[3ul];
+  map_key[4u] = ether_header_1->dst_addr.addr_bytes[4ul];
+  map_key[5u] = ether_header_1->dst_addr.addr_bytes[5ul];
+  #else
   map_key[0u] = ether_header_1->d_addr.addr_bytes[0ul];
   map_key[1u] = ether_header_1->d_addr.addr_bytes[1ul];
   map_key[2u] = ether_header_1->d_addr.addr_bytes[2ul];
   map_key[3u] = ether_header_1->d_addr.addr_bytes[3ul];
   map_key[4u] = ether_header_1->d_addr.addr_bytes[4ul];
   map_key[5u] = ether_header_1->d_addr.addr_bytes[5ul];
+  #endif
   map_key[6u] = device & 0xff;
   map_key[7u] = (device >> 8) & 0xff;
   int map_value_out;
