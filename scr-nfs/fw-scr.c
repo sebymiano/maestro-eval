@@ -34,6 +34,8 @@
 #include <rte_version.h>
 #include <rte_build_config.h>
 
+#include <xxhash.h>
+
 #include "mac_flow_rules.h"
 
 /**********************************************
@@ -113,7 +115,7 @@ struct Map {
   map_key_hash *khash;
 };
 
-static unsigned loop(unsigned k, unsigned capacity) {
+static __always_inline unsigned loop(unsigned k, unsigned capacity) {
   return k & (capacity - 1);
 }
 
@@ -132,8 +134,9 @@ static int find_key(int *busybits, void **keyps, unsigned *k_hashes, int *chns,
       if (eq(kp, keyp)) {
         return (int)index;
       }
-      printf("Hash collision detected, but keys are different\n");
-      printf("index: %d, hash: %u\n", index, key_hash);
+      // Hash collision detected, but keys are different
+      // printf("Hash collision detected, but keys are different\n");
+      // printf("index: %d, hash: %u, kh: %u\n", index, key_hash, kh);
     } else {
       if (chn == 0) {
         return -1;
@@ -1126,9 +1129,8 @@ uint32_t spread_data_among_cores(uint32_t capacity) {
  **********************************************/
 
 bool nf_init(void);
-int nf_process(uint16_t device, uint8_t *buffer, uint16_t packet_length,
-               vigor_time_t now);
-int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now);
+int nf_process(struct Map **map_ptr, struct Vector** vector_ptr, struct Vector** vector_1_ptr, struct DoubleChain** dchain_ptr, uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now);
+int nf_process_scr(struct Map **map_ptr, struct Vector** vector_ptr, struct Vector** vector_1_ptr, struct DoubleChain** dchain_ptr, uint16_t device, struct metadata_elem *state_elem, uint64_t now);
 
 #define FLOOD_FRAME ((uint16_t)-1)
 
@@ -1260,6 +1262,11 @@ void print_md(uint16_t device, uint16_t lcore_id, struct metadata_elem *md) {
   printf("\n");
 }
 
+RTE_DEFINE_PER_LCORE(struct Map*, _map);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
+RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
+
 static void worker_main(void) {
   const unsigned lcore_id = rte_lcore_id();
   const uint16_t queue_id = lcores_conf[lcore_id].queue_id;
@@ -1277,6 +1284,11 @@ static void worker_main(void) {
     rte_exit(EXIT_FAILURE, "We assume there will be exactly 2 devices.");
   }
 
+  struct Map** map_ptr = &RTE_PER_LCORE(_map);
+  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
+
   while (1) {
     unsigned VIGOR_DEVICES_COUNT = rte_eth_dev_count_avail();
 
@@ -1290,6 +1302,12 @@ static void worker_main(void) {
       uint16_t tx_count = 0;
 
       for (uint16_t n = 0; n < rx_count; n++) {
+        for (uint16_t p = 1; p <= PKT_PREFETCH_DISTANCE; p++) {
+          if (n + p < rx_count) {
+              rte_prefetch_non_temporal(rte_pktmbuf_mtod(mbufs[n + p], void *));
+          }
+        }
+
         uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
         vigor_time_t VIGOR_NOW = current_time();
 
@@ -1310,14 +1328,20 @@ static void worker_main(void) {
           md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
           // print_md(mbufs[n]->port, lcore_id, md);
 
-          nf_process_scr(mbufs[n]->port, md, md->timestamp);
+          for (int p = 1; p <= MD_PREFETCH_DISTANCE; p++) {
+              if (i + p < NUM_CORES - 1) {
+                  rte_prefetch_non_temporal(md_start + (i + p) * sizeof(struct metadata_elem));
+              }
+          }
+
+          nf_process_scr(map_ptr, vector_ptr, vector_1_ptr, dchain_ptr, mbufs[n]->port, md, VIGOR_NOW);
           VIGOR_NOW = md->timestamp + 10;
         }
 
         offset = dummy_header_size + md_size;
         uint8_t *current_pkt_data = data + offset;
         
-        uint16_t dst_device = nf_process(mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
+        uint16_t dst_device = nf_process(map_ptr, vector_ptr, vector_1_ptr, dchain_ptr, mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
 
         if (dst_device == VIGOR_DEVICE) {
           rte_pktmbuf_free(mbufs[n]);
@@ -1839,6 +1863,7 @@ int main(int argc, char **argv) {
 
   cleanup_all_rules(0);
   cleanup_all_rules(1);
+  // destroy_mac_filter(0, mac_map, RTE_MAX_LCORE);
   return 0;
 }
 
@@ -1871,6 +1896,29 @@ uint32_t FlowId_hash(void* obj) {
   hash = __builtin_ia32_crc32si(hash, id->protocol);
   return hash;
 }
+
+/**
+ * Generates a hash value for a FlowId struct with reduced collisions using AVX2.
+ * 
+ * @param obj Pointer to a FlowId struct
+ * @return 32-bit hash value
+ */
+// uint32_t FlowId_hash_simd(void* obj) {
+//     // Directly hash the memory occupied by the FlowId struct
+//     struct FlowId* id = (struct FlowId*)obj;
+
+//     // Combine fields into a buffer for hashing
+//     uint32_t data[5];
+//     data[0] = id->src_port;
+//     data[1] = id->dst_port;
+//     data[2] = id->src_ip;
+//     data[3] = id->dst_ip;
+//     data[4] = id->protocol;
+
+//     // Compute the 32-bit xxHash for the combined data
+//     return XXH32(data, sizeof(data), 0);  // `0` is the seed
+// }
+
 void FlowId_allocate(void* obj) {
   struct FlowId* id = (struct FlowId*)obj;
   id->src_port = 0;
@@ -1914,12 +1962,9 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
 
 bool FlowId_eq(void* a, void* b) ;
 uint32_t FlowId_hash(void* obj) ;
+uint32_t FlowId_hash_simd(void* obj) ;
 void FlowId_allocate(void* obj) ;
 void null_init(void* obj) ;
-RTE_DEFINE_PER_LCORE(struct Map*, _map);
-RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
-RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
-RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
 
 bool nf_init() {
   struct Map** map_ptr = &RTE_PER_LCORE(_map);
@@ -1979,11 +2024,11 @@ bool nf_init() {
 
 }
 
-int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t now) {
-  struct Map** map_ptr = &RTE_PER_LCORE(_map);
-  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
-  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
-  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
+int nf_process_scr(struct Map **map_ptr, struct Vector** vector_ptr, struct Vector** vector_1_ptr, struct DoubleChain** dchain_ptr, uint16_t device, struct metadata_elem *state_elem, uint64_t now) {
+  // struct Map** map_ptr = &RTE_PER_LCORE(_map);
+  // struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  // struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+  // struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
   // int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
 
   // 120
@@ -2180,11 +2225,11 @@ int nf_process_scr(uint16_t device, struct metadata_elem *state_elem, int64_t no
   } // !((8u == ether_header_1->ether_type) & (20ul <= (4294967282u + packet_length)))
 }
 
-int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
-  struct Map** map_ptr = &RTE_PER_LCORE(_map);
-  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
-  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
-  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
+int nf_process(struct Map **map_ptr, struct Vector** vector_ptr, struct Vector** vector_1_ptr, struct DoubleChain** dchain_ptr, uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
+  // struct Map** map_ptr = &RTE_PER_LCORE(_map);
+  // struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  // struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+  // struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
   int number_of_freed_flows__27 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
 
