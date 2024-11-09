@@ -1896,8 +1896,8 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
     // 123
     if (((6u == ipv4_header_1->next_proto_id) | (17u == ipv4_header_1->next_proto_id)) & ((4294967262u + packet_length) >= 4ul)) {
       struct tcpudp_hdr* tcpudp_header_1 = (struct tcpudp_hdr*)(packet + (14u + 20u));
-      // int number_of_freed_flows__36 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
-      // sketch_expire((*sketch_ptr), now - 100000000000ul);
+      int number_of_freed_flows__36 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
+      sketch_expire((*sketch_ptr), now - 100000000000ul);
 
       // 119
       if (0u != device) {
@@ -1945,7 +1945,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
 
           // 120
           // 121
-          if (false == ((out_of_space__52))) {
+          if (false == ((out_of_space__52) & (0u == number_of_freed_flows__36))) {
             uint8_t* vector_value_out = 0u;
             vector_borrow((*vector_ptr), new_index__52, (void**)(&vector_value_out));
             vector_value_out[0u] = tcpudp_header_1->src_port & 0xff;
@@ -1988,8 +1988,8 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
 
         // 123
         else {
-          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
-          // sketch_refresh((*sketch_ptr), now);
+          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          sketch_refresh((*sketch_ptr), now);
           return 1;
         } // !(0u == map_has_this_key__48)
 

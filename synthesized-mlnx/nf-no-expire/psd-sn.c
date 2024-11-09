@@ -1933,7 +1933,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
     // 153
     if (((6u == ipv4_header_1->next_proto_id) | (17u == ipv4_header_1->next_proto_id)) & ((4294967262u + packet_length) >= 4ul)) {
       struct tcpudp_hdr* tcpudp_header_1 = (struct tcpudp_hdr*)(packet + (14u + 20u));
-      // int number_of_freed_flows__42 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
+      int number_of_freed_flows__42 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
 
       // 148
       if (0u != device) {
@@ -1961,7 +1961,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
           int out_of_space__56 = !dchain_allocate_new_index((*dchain_ptr), &new_index__56, now);
 
           // 149
-          if (false == ((out_of_space__56))) {
+          if (false == ((out_of_space__56) & (0u == number_of_freed_flows__42))) {
             uint8_t* vector_value_out = 0u;
             vector_borrow((*vector_ptr), new_index__56, (void**)(&vector_value_out));
             vector_value_out[0u] = ipv4_header_1->src_addr & 0xff;
@@ -1974,7 +1974,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
             vector_value_out_1[1u] = 0u;
             vector_value_out_1[2u] = 0u;
             vector_value_out_1[3u] = 0u;
-            // int number_of_freed_flows__61 = expire_items_single_map_iteratively((*vector_2_ptr), (*map_1_ptr), new_index__56, ((int*)(vector_value_out_1))[0]);
+            int number_of_freed_flows__61 = expire_items_single_map_iteratively((*vector_2_ptr), (*map_1_ptr), new_index__56, ((int*)(vector_value_out_1))[0]);
             uint8_t* vector_value_out_2 = 0u;
             vector_borrow((*vector_2_ptr), 64u * new_index__56, (void**)(&vector_value_out_2));
             vector_value_out_2[0u] = ipv4_header_1->src_addr & 0xff;
@@ -2002,7 +2002,7 @@ int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t
         // 152
         // 153
         else {
-          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
           uint8_t* vector_value_out = 0u;
           vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
           uint8_t map_key_1[6];
