@@ -233,6 +233,8 @@ def main():
 		# Filter out the ones which do not have data yet
 		nfs = list(filter(lambda nf: os.path.exists(nf['infile']) , entry['nfs']))
 		entry['processor'](nfs)
+	
+	print("Done processing raws data")
 
 if __name__ == '__main__':
 	main()
