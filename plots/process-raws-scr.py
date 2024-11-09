@@ -82,6 +82,7 @@ def technologies(nfs):
 		assert(len(outfile))
 
 		with open(outfile, 'w') as o:
+			o.write("#cores median min max speedup\n")
 			for d in data[nf]:
 				cores, _median, minimum, maximum, speedup = d
 				o.write("{} {} {} {} {}\n".format(cores, _median, minimum, maximum, speedup))
@@ -116,7 +117,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/technologies/{nf}-scr-uniform.csv',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-uniform.csv',
 				'dat': f'{DAT_DIR}/{nf}-scr-uniform.dat',
 			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
 		]
@@ -150,7 +151,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/technologies/{nf}-scr-single.csv',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-single.csv',
 				'dat': f'{DAT_DIR}/{nf}-scr-single.dat',
 			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
 		]
@@ -184,7 +185,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/technologies/{nf}-scr-zipf.csv',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-zipf.csv',
 				'dat': f'{DAT_DIR}/{nf}-scr-zipf.dat',
 			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
 		]
@@ -218,7 +219,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/technologies/{nf}-scr-imc-scr.csv',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-imc-scr.csv',
 				'dat': f'{DAT_DIR}/{nf}-scr-imc-scr.dat',
 			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
 		]
