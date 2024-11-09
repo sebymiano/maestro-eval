@@ -2327,7 +2327,7 @@ struct VectorLocks* vector_1;
 bool nf_init() {
 
   #if API_AT_LEAST_AS_RECENT_AS(22, 03)
-  if (!(rte_get_initial_lcore() == rte_lcore_id())) {
+  if (!(rte_get_main_lcore() == rte_lcore_id())) {
     return 1;
   }
   #else
