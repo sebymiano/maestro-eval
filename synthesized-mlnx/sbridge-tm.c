@@ -2628,9 +2628,15 @@ struct DoubleChainTM* dchain;
 bool nf_init() {
   HTM_thr_init(rte_lcore_id());
 
+  #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+  if (!(rte_get_initial_lcore() == rte_lcore_id())) {
+    return 1;
+  }
+  #else
   if (!(rte_get_master_lcore() == rte_lcore_id())) {
     return 1;
   }
+  #endif
 
   int map_allocation_succeeded__1 = map_allocate(rte_ether_addr_eq, rte_ether_addr_hash, 65536u, &map);
 
