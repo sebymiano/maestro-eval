@@ -2,13 +2,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+from pdfCropMargins import crop
+
 # Define the technologies and corresponding colors
-technologies = ["Shared-nothing", "Lock-based", "TM", "SCR", "RSS"]
+# technologies = ["SN", "Lock-based", "TM", "SCR", "RSS"]
+technologies = ["SN", "SCR", "RSS"]
 colors = ["#332288", "#CC6677", "#88CCEE", "#44AA99", "#117733"]
 
 # Define the applications and data directory
-applications = ["NOP", "SBridge", "Policer", "FW", "NAT", "CL", "PSD"]
+applications = ["NOP", "SBridge", "Pol", "FW", "NAT", "CL", "PSD"]
 workload_types = ["uniform", "single", "zipf", "imc-scr"]
+# workload_types = ["uniform"]
 data_dir = "./dats"
 output_dir = "./out"  # Directory to save output plots
 
@@ -26,50 +30,64 @@ for workload in workload_types:
             # Construct the filename based on the application, technology, and workload type
             filename = os.path.join(data_dir, f"{app.lower()}-{tech.lower().replace(' ', '-')}-{workload}.dat")
             if os.path.exists(filename):
-                # Load the data: assuming columns for [xtic, value, error]
-                values = np.loadtxt(filename, usecols=[1], delimiter=":")  # Adjust delimiter if necessary
-                data[app].append(values)
+                # Load the data: assuming the second column contains the median values for each core
+                median_values = np.loadtxt(filename, usecols=[1], skiprows=1)  # Skip header row
+                data[app].append(median_values)  # Use all median values (one per core)
             else:
                 print(f"Warning: File {filename} does not exist.")
-                data[app].append([0])  # Placeholder if file is missing
+                data[app].append(np.zeros(8))  # Placeholder if file is missing (assuming 8 cores)
 
     # Plotting
     num_apps = len(applications)
-    bar_width = 0.15  # Width of each bar in a group
-    index = np.arange(num_apps)  # The x locations for the applications
+    bar_width = 0.15  # Width of each bar group
+    num_cores = len(data[applications[0]][0])  # Assuming each data file has the same number of cores
+    index = np.arange(num_cores)  # The x locations for the cores
 
     # Create figure and set layout for the current workload type
-    fig, axes = plt.subplots(num_apps, 1, figsize=(10, 18), sharex=True)
-    fig.suptitle(f'Technologies Comparison - {workload.capitalize()}', fontsize=20)
+    fig, axes = plt.subplots(num_apps, 1, figsize=(12, 18), sharex=True)
+    fig.suptitle(f'Technologies Comparison - {workload.capitalize()}', fontsize=20, y=0.91)
 
-    # Iterate over each application and plot the histogram bars for each technology
+    # Set default color cycle
+    colors = plt.get_cmap("tab10").colors
+
+    # Iterate over each application and plot the histogram bars for each technology across all cores
     for i, (app_name, ax) in enumerate(zip(applications, axes)):
-        values = data[app_name]
-        
-        for j, (tech, color) in enumerate(zip(technologies, colors)):
+        # Plot each technology for all cores
+        for j, tech in enumerate(technologies):
             # Offset each bar within the group by its position
-            ax.bar(index[i] + j * bar_width, values[j][0], bar_width, label=tech if i == 0 else "", color=color)
+            ax.bar(index + j * bar_width, data[app_name][j], bar_width, color=colors[j])
 
-        ax.set_ylabel(app_name, fontsize=14)
-        ax.set_ylim(0, 60)
+        # ax.set_ylim(0, 144.8)  # Cap y-limit at 144.8 Mpps
         ax.grid(axis='y', linestyle='--', linewidth=0.5)
         
-        if i == 0:
-            ax.legend(loc='upper center', ncol=len(technologies), bbox_to_anchor=(0.5, 1.3), fontsize=10)
-        if i == num_apps - 1:
-            ax.set_xticks(index + (bar_width * (len(technologies) - 1) / 2))
-            ax.set_xticklabels(applications, rotation=45)
+        # Set x-ticks with labels on each subplot
+        ax.set_xticks(index + (bar_width * (len(technologies) - 1) / 2))
+        ax.set_xticklabels([f'{core + 1} cores' for core in index])
+
+        # Move application name to the right side, rotated by 90 degrees
+        ax.annotate(app_name, xy=(1.02, 0.5), xycoords='axes fraction', ha='left', va='center', 
+                    fontsize=12, rotation=90)
+
+    # Set the legend once, slightly below the title to avoid overlap
+    fig.legend(technologies, loc="upper center", ncol=len(technologies), fontsize=10, bbox_to_anchor=(0.5, 0.89))
+
+    # Add y-axis label for throughput, with additional padding
+    fig.text(0.055, 0.5, 'Throughput (Mpps)', va='center', rotation='vertical', fontsize=14)
 
     # Add x-axis label for the entire plot
-    fig.text(0.5, 0.04, 'Applications', ha='center', fontsize=16)
-    fig.text(0.04, 0.5, 'Throughput (Mpps)', va='center', rotation='vertical', fontsize=16)
+    fig.text(0.5, 0.055, 'Number of Cores', ha='center', fontsize=14)
 
-    # Adjust layout to include the title and labels
-    plt.tight_layout(rect=[0, 0.04, 1, 0.96])
+    # Adjust layout to ensure no overlaps and bring legend closer to the subplots
+    plt.tight_layout(rect=[0.06, 0.06, 1, 0.90])
+
+    fig.subplots_adjust(hspace=0.1)
 
     # Save each plot as a PDF in the output directory
     output_path = os.path.join(output_dir, f'technologies-comparison-{workload}.pdf')
     plt.savefig(output_path)
     plt.close(fig)  # Close the figure after saving to free up memory
+
+    crop(["-u", "-o", f'{output_path.rstrip(".pdf")}_cropped.pdf', f"{output_path}"])
+    os.replace(f'{output_path.rstrip(".pdf")}_cropped.pdf', f"{output_path}")
 
     print(f"Plot saved to {output_path}")
