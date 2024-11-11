@@ -64,7 +64,7 @@ def technologies(nfs):
 				nf_data.append((cores, _median, m, M))
 			
 			base = [ e for e in nf_data if e[0] == 1  ]
-			assert len(base) == 1
+			assert len(base) == 1, f"Expected 1 element, got {len(base)} for {nf['name']} ({nf['infile']})"
 			base_perf_mpps = base[0][1]
 
 			for i, d in enumerate(nf_data):
