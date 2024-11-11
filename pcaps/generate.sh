@@ -18,6 +18,7 @@ IMC16_URL=https://pages.cs.wisc.edu/~tbenson/IMC_DATA/$IMC16_FILE
 IMC16_CHOSEN_TRACE=univ1_pt16
 IMC16_TRACE=imc16.pcap
 
+CAIDA_TRACE=caida.pcap
 
 UNIFORM_SCRIPT=$SCRIPT_DIR/uniform.py
 SINGLE_SCRIPT=$SCRIPT_DIR/single.py
@@ -120,6 +121,17 @@ gen_processed_scr_internet_trace() {
     $UNIFORM_SCRIPT --output "$pcap" --pcap "${IMC16_TRACE}" --size $pkt_size --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
 }
 
+gen_processed_caida_trace() {
+    pkt_size=64
+    pcap=$SCRIPT_DIR/caida_${pkt_size}B.pcap
+
+    if [ -f $pcap ]; then
+        return 0
+    fi
+
+    $UNIFORM_SCRIPT --output "$pcap" --pcap "${CAIDA_TRACE}" --size $pkt_size --src-mac $PCAP_SRC_MAC --dst-mac $PCAP_DST_MAC
+}
+
 gen_uniform_vpp_trace() {
     pkt_size=64
     num_flows=40000
@@ -206,5 +218,6 @@ if [ $# -gt 0 ] && [ "$1" == "--scr" ]; then
     # gen_processed_internet_trace
     get_scr_univ_trace
     gen_processed_scr_internet_trace
+    gen_processed_caida_trace
 fi
     

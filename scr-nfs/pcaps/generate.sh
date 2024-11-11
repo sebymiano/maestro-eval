@@ -134,6 +134,21 @@ gen_imc_scr_traces_scr() {
     gen_imc_scr_trace $target 64
 }
 
+gen_caida_trace() {
+    local target=$1
+    local pkt_size=$2
+
+    pcap=$ORIGINAL_PCAP_DIR/caida_${pkt_size}B.pcap
+
+    gen_trace $target $pkt_size $pcap "caida"
+}
+
+gen_caida_traces_scr() {
+    local target=$1
+    
+    gen_caida_trace $target 64
+}
+
 # Check if poetry is installed
 if ! command -v poetry &> /dev/null; then
     echo "Poetry is not installed. Please install it to proceed."
@@ -185,6 +200,14 @@ gen_imc_scr_traces_scr "fw"
 gen_imc_scr_traces_scr "nat"
 gen_imc_scr_traces_scr "psd"
 gen_imc_scr_traces_scr "pol"
+
+gen_caida_traces_scr "nop"
+gen_caida_traces_scr "cl"
+gen_caida_traces_scr "sbridge"
+gen_caida_traces_scr "fw"
+gen_caida_traces_scr "nat"
+gen_caida_traces_scr "psd"
+gen_caida_traces_scr "pol"
 
 duration=$SECONDS
 echo "$((duration / 60)) minutes and $((duration % 60)) seconds elapsed."
