@@ -1292,80 +1292,72 @@ static void worker_main(void) {
   while (1) {
     unsigned VIGOR_DEVICES_COUNT = rte_eth_dev_count_avail();
 
-    for (uint16_t VIGOR_DEVICE = 0; VIGOR_DEVICE < VIGOR_DEVICES_COUNT;
-         VIGOR_DEVICE++) {
+    for (uint16_t VIGOR_DEVICE = 0; VIGOR_DEVICE < VIGOR_DEVICES_COUNT; VIGOR_DEVICE++) {
       struct rte_mbuf *mbufs[VIGOR_BATCH_SIZE];
-      uint16_t rx_count =
-          rte_eth_rx_burst(VIGOR_DEVICE, queue_id, mbufs, VIGOR_BATCH_SIZE);
+      uint16_t rx_count = rte_eth_rx_burst(VIGOR_DEVICE, queue_id, mbufs, VIGOR_BATCH_SIZE);
 
       struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];
       uint16_t tx_count = 0;
 
-      for (uint16_t n = 0; n < rx_count; n++) {
-        for (uint16_t p = 1; p <= PKT_PREFETCH_DISTANCE; p++) {
-          if (n + p < rx_count) {
-              rte_prefetch_non_temporal(rte_pktmbuf_mtod(mbufs[n + p], void *));
-          }
+      for (uint16_t n = 0; n < rx_count; n += PKT_PREFETCH_DISTANCE) {
+        // Prefetch the next PKT_PREFETCH_DISTANCE packets
+        for (uint16_t p = 0; p < PKT_PREFETCH_DISTANCE && (n + p) < rx_count; p++) {
+          rte_prefetch_non_temporal(rte_pktmbuf_mtod(mbufs[n + p], void *));
         }
 
-        uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
-        vigor_time_t VIGOR_NOW = current_time();
-
-        /* This is the part related to SCR */
-        int dummy_header_size = sizeof(struct ethhdr);
-        int md_offset = dummy_header_size;
-        struct metadata_elem *md;
-        uint8_t *md_start = data + md_offset;
-        uint64_t md_size = (NUM_CORES - 1) * sizeof(struct metadata_elem);
-        uint64_t offset = 0;
-
-        if (md_start + md_size > (data + mbufs[n]->data_len)) {
-          printf("Error: We requested %lu metadata from a packet with len: %d\n", md_size, mbufs[n]->data_len);
-          continue;
-        }
-
-        for (int i = 0; i < NUM_CORES - 1; i++) {
-          md = (struct metadata_elem *)(md_start + i * sizeof(struct metadata_elem));
-          // print_md(mbufs[n]->port, lcore_id, md);
-
-          for (int p = 1; p <= MD_PREFETCH_DISTANCE; p++) {
-              if (i + p < NUM_CORES - 1) {
-                  rte_prefetch_non_temporal(md_start + (i + p) * sizeof(struct metadata_elem));
-              }
+        // Process the prefetched batch of packets
+        for (uint16_t m = n; m < n + PKT_PREFETCH_DISTANCE && m < rx_count; m++) {
+          uint8_t *data = rte_pktmbuf_mtod(mbufs[m], uint8_t *);
+          vigor_time_t VIGOR_NOW = 0;
+          if ((NUM_CORES - 1) == 0) {
+            VIGOR_NOW = current_time();
           }
 
-          nf_process_scr(map_ptr, vector_ptr, vector_1_ptr, dchain_ptr, mbufs[n]->port, md, VIGOR_NOW);
-          VIGOR_NOW = md->timestamp + 10;
-        }
+          /* This is the part related to SCR */
+          int dummy_header_size = sizeof(struct ethhdr);
+          int md_offset = dummy_header_size;
+          struct metadata_elem *md;
+          uint8_t *md_start = data + md_offset;
+          uint64_t md_size = (NUM_CORES - 1) * sizeof(struct metadata_elem);
 
-        offset = dummy_header_size + md_size;
-        uint8_t *current_pkt_data = data + offset;
-        
-        uint16_t dst_device = nf_process(map_ptr, vector_ptr, vector_1_ptr, dchain_ptr, mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
+          if (md_start + md_size > (data + mbufs[m]->data_len)) {
+            printf("Error: We requested %lu metadata from a packet with len: %d\n", md_size, mbufs[m]->data_len);
+            continue;
+          }
 
-        if (dst_device == VIGOR_DEVICE) {
-          rte_pktmbuf_free(mbufs[n]);
-        } else if (dst_device == FLOOD_FRAME) {
-          flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
-        } else {
-          // offset = dummy_header_size + md_size;
-          // Remove the metadata section from the packet
-          // if (unlikely(rte_pktmbuf_adj(mbufs[n], offset) == NULL)) {
-          //   // If adjusting the mbuf fails, free the packet and continue
-          //   printf("Error: Unable to adjust mbuf to remove metadata\n");
-          //   rte_pktmbuf_free(mbufs[n]);
-          //   continue;
-          // }
-          mbufs_to_send[tx_count] = mbufs[n];
-          tx_count++;
+          // Prefetch the next MD_PREFETCH_DISTANCE metadata elements
+          for (int i = 0; i < NUM_CORES - 1; i += MD_PREFETCH_DISTANCE) {
+            for (int p = 0; p < MD_PREFETCH_DISTANCE && (i + p) < NUM_CORES - 1; p++) {
+              rte_prefetch_non_temporal(md_start + (i + p) * sizeof(struct metadata_elem));
+            }
+
+            // Process the prefetched batch of metadata
+            for (int j = i; j < i + MD_PREFETCH_DISTANCE && j < NUM_CORES - 1; j++) {
+              md = (struct metadata_elem *)(md_start + j * sizeof(struct metadata_elem));
+              nf_process_scr(map_ptr, vector_ptr, vector_1_ptr, dchain_ptr, mbufs[m]->port, md, VIGOR_NOW);
+              VIGOR_NOW = md->timestamp + 10;
+            }
+          }
+
+          uint64_t offset = dummy_header_size + md_size;
+          uint8_t *current_pkt_data = data + offset;
+
+          uint16_t dst_device = nf_process(map_ptr, vector_ptr, vector_1_ptr, dchain_ptr, mbufs[m]->port, current_pkt_data, mbufs[m]->pkt_len, VIGOR_NOW);
+
+          if (dst_device == VIGOR_DEVICE) {
+            rte_pktmbuf_free(mbufs[m]);
+          } else if (dst_device == FLOOD_FRAME) {
+            flood(mbufs[m], VIGOR_DEVICES_COUNT, queue_id);
+          } else {
+            mbufs_to_send[tx_count] = mbufs[m];
+            tx_count++;
+          }
         }
       }
 
-      uint16_t sent_count =
-          rte_eth_tx_burst(1 - VIGOR_DEVICE, queue_id, mbufs_to_send, tx_count);
+      uint16_t sent_count = rte_eth_tx_burst(1 - VIGOR_DEVICE, queue_id, mbufs_to_send, tx_count);
       for (uint16_t n = sent_count; n < tx_count; n++) {
-        rte_pktmbuf_free(mbufs[n]); // should not happen, but we're in the
-                                    // unverified case anyway
+        rte_pktmbuf_free(mbufs_to_send[n]);
       }
     }
   }
