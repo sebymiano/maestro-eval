@@ -6,7 +6,7 @@ from pdfCropMargins import crop
 
 # Define the technologies and corresponding colors
 # technologies = ["SN", "Lock-based", "TM", "SCR", "RSS"]
-technologies = ["SN", "SCR", "RSS"]
+technologies = ["SN", "SCR", "RSS", "TM", "Locks"]
 colors = ["#332288", "#CC6677", "#88CCEE", "#44AA99", "#117733"]
 
 # Define the applications and data directory
