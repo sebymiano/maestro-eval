@@ -11,7 +11,7 @@ colors = ["#332288", "#CC6677", "#88CCEE", "#44AA99", "#117733"]
 
 # Define the applications and data directory
 applications = ["NOP", "SBridge", "Pol", "FW", "NAT", "CL", "PSD"]
-workload_types = ["uniform", "single", "zipf", "imc-scr"]
+workload_types = ["uniform", "single", "zipf", "imc-scr", "caida"]
 # workload_types = ["uniform"]
 data_dir = "./dats"
 output_dir = "./out"  # Directory to save output plots

@@ -224,6 +224,40 @@ lut = [
 			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
 		]
 	},
+	{
+		'processor': technologies,
+		'nfs': [
+			{
+				'name': f'shared-nothing-{nf}',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-caida.csv',
+				'dat': f'{DAT_DIR}/{nf}-sn-caida.dat',
+			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+		] + [
+			{
+				'name': f'locks-{nf}',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-caida.csv',
+				'dat': f'{DAT_DIR}/{nf}-locks-caida.dat',
+			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+		] + [
+			{
+				'name': f'tm-{nf}',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-caida.csv',
+				'dat': f'{DAT_DIR}/{nf}-tm-caida.dat',
+			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+		] + [
+			{
+				'name': f'rss-{nf}',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-caida.csv',
+				'dat': f'{DAT_DIR}/{nf}-rss-caida.dat',
+			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+		] + [
+			{
+				'name': f'scr-{nf}',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-caida.csv',
+				'dat': f'{DAT_DIR}/{nf}-scr-caida.dat',
+			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+		]
+	},
 ]
 
 def main():
