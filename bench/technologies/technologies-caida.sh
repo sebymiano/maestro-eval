@@ -6,6 +6,7 @@ CURRENT_EXPERIMENT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/nul
 
 FUNCTIONS_FILE="$CURRENT_EXPERIMENT_DIR/../functions.sh"
 MLNX_SYNTHESIZED_NFS="$CURRENT_EXPERIMENT_DIR/../../synthesized-mlnx/compile.sh"
+MLNX_SYNTHESIZED_NFS_OTHERS="$CURRENT_EXPERIMENT_DIR/../../synthesized-mlnx/compile_others.sh"
 source $FUNCTIONS_FILE
 
 PCAP="caida_64B.pcap"
@@ -61,9 +62,13 @@ seq() {
 }
 
 sh -c ${MLNX_SYNTHESIZED_NFS}
-# seq
+sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
+
+export TG_PCAPS_DIR=${TG_SCR_PCAPS_DIR}
+export DUT_PCAPS_DIR=${DUT_SCR_PCAPS_DIR}
+
 shared_nothing
 rss
-# locks
-# tm
+locks
+tm
 
