@@ -414,12 +414,12 @@ def get_cfg(tx_pcie_dev, rx_pcie_dev, num_tx_cores, num_rx_cores):
 
 	return cfg
 
-def search_throughput(pcap, cfg, duration_sec, iterations, lb=False, dry_run=False, verbose=False, scr=False, num_rx_queues=8):
+def search_throughput(pcap, cfg, duration_sec, iterations, lb=False, dry_run=False, verbose=False, scr=False, num_rx_queues=8, start_rate=100.0):
 	upper_bound = 100.0 # %
 	lower_bound = 0     # %
 	
 	max_rate = upper_bound
-	mid_rate = upper_bound
+	mid_rate = float(start_rate)
 	min_rate = lower_bound
 
 	best_data = {
@@ -572,6 +572,8 @@ def main():
 	parser.add_argument('--num-rx-queues',
 		type=int, default=8, required=False, help='Number of RX queues')
 
+	parser.add_argument('--start-rate', type=range_limited_rate, default=100, help='Start rate (%% of total capacity)')
+
 	args = parser.parse_args()
 
 	pcap = os.path.abspath(args.pcap)
@@ -591,7 +593,7 @@ def main():
 		exit(1)
 	else:
 		if args.find_stable_throughput:
-			data = search_throughput(pcap, cfg, args.duration, args.iterations, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues)
+			data = search_throughput(pcap, cfg, args.duration, args.iterations, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues, start_rate=args.start_rate)
 		else:
 			data = run_pktgen(pcap, cfg, args.rate, args.duration, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues)
 

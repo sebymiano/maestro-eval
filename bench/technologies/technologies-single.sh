@@ -64,6 +64,7 @@ seq() {
 sh -c ${MLNX_SYNTHESIZED_NFS}
 sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
 
+export ADDITIONAL_REPLAY_PCAP_FLAGS="--start-rate 25"
 shared_nothing
 rss
 locks
