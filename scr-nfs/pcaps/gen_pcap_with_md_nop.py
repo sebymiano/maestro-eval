@@ -27,7 +27,7 @@ class MetadataElem:
         md_bytes = b""
         # Convert MAC address to bytes (6 bytes for MAC address in big-endian)
         # md_bytes += self.protocol.to_bytes(1, "big")
-        # md_bytes += int(self.timestamp).to_bytes(8, 'big')
+        md_bytes += int(self.timestamp).to_bytes(8, 'big')
         return md_bytes
 
 
