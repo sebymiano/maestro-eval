@@ -1293,7 +1293,7 @@ static void worker_main(void) {
             // Process the prefetched batch of metadata
             for (int j = i; j < i + MD_PREFETCH_DISTANCE && j < NUM_CORES - 1; j++) {
               md = (struct metadata_elem *)(md_start + j * sizeof(struct metadata_elem));
-              nf_process_scr(mbufs[n]->port, md, md->timestamp);
+              nf_process_scr(mbufs[m]->port, md, md->timestamp);
               VIGOR_NOW = md->timestamp + 10;
             }
           }
@@ -1301,7 +1301,7 @@ static void worker_main(void) {
           uint64_t offset = dummy_header_size + md_size;
           uint8_t *current_pkt_data = data + offset;
 
-          uint16_t dst_device = nf_process(mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
+          uint16_t dst_device = nf_process(mbufs[m]->port, current_pkt_data, mbufs[m]->pkt_len, VIGOR_NOW);
 
           if (dst_device == VIGOR_DEVICE) {
             rte_pktmbuf_free(mbufs[m]);

@@ -1311,7 +1311,7 @@ static void worker_main(void) {
             // Process the prefetched batch of metadata
             for (int j = i; j < i + MD_PREFETCH_DISTANCE && j < NUM_CORES - 1; j++) {
               md = (struct metadata_elem *)(md_start + j * sizeof(struct metadata_elem));
-              nf_process_scr(map_ptr, vector_ptr, map_1_ptr, vector_1_ptr, vector_2_ptr, dchain_ptr, mbufs[n]->port, md, md->timestamp);
+              nf_process_scr(map_ptr, vector_ptr, map_1_ptr, vector_1_ptr, vector_2_ptr, dchain_ptr, mbufs[m]->port, md, md->timestamp);
               VIGOR_NOW = md->timestamp + 10;
             }
           }
@@ -1319,13 +1319,21 @@ static void worker_main(void) {
           uint64_t offset = dummy_header_size + md_size;
           uint8_t *current_pkt_data = data + offset;
 
-          uint16_t dst_device = nf_process(map_ptr, vector_ptr, map_1_ptr, vector_1_ptr, vector_2_ptr, dchain_ptr, mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
+          uint16_t dst_device = nf_process(map_ptr, vector_ptr, map_1_ptr, vector_1_ptr, vector_2_ptr, dchain_ptr, mbufs[m]->port, current_pkt_data, mbufs[m]->pkt_len, VIGOR_NOW);
 
           if (dst_device == VIGOR_DEVICE) {
             rte_pktmbuf_free(mbufs[m]);
           } else if (dst_device == FLOOD_FRAME) {
             flood(mbufs[m], VIGOR_DEVICES_COUNT, queue_id);
           } else {
+            offset = dummy_header_size + md_size;
+            // Remove the metadata section from the packet
+            // if (unlikely(rte_pktmbuf_adj(mbufs[m], offset) == NULL)) {
+            //   // If adjusting the mbuf fails, free the packet and continue
+            //   printf("Error: Unable to adjust mbuf to remove metadata\n");
+            //   rte_pktmbuf_free(mbufs[m]);
+            //   continue;
+            // }
             mbufs_to_send[tx_count] = mbufs[m];
             tx_count++;
           }
