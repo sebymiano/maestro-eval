@@ -14,6 +14,9 @@ BENCH_DIR_SCR = Path(SCRIPT_DIR).parent / Path("scr-nfs")
 
 DAT_DIR = Path(SCRIPT_DIR) / Path("dats")
 
+NF_NAMES = [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+PKT_SIZES = [ 64 ]
+
 def technologies(nfs):
 	data = {}
 
@@ -111,195 +114,195 @@ lut = [
 		'processor': technologies,
 		'nfs': [
 			{
-				'name': f'shared-nothing-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-uniform.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-sn-uniform_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-sn-uniform_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-uniform-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-sn-uniform-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-sn-uniform-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES 
 		] + [
 			{
-				'name': f'locks-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-uniform.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-locks-uniform_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-locks-uniform_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'locks-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-uniform-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-locks-uniform-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-locks-uniform-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'tm-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-uniform.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-tm-uniform_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-tm-uniform_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'tm-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-uniform-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-tm-uniform-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-tm-uniform-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'rss-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-uniform.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-rss-uniform_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-rss-uniform_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'rss-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-uniform-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-rss-uniform-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-rss-uniform-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-uniform.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-scr-uniform_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-scr-uniform_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'scr-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-uniform-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-scr-uniform-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-scr-uniform-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		]
 	},
 	{
 		'processor': technologies,
 		'nfs': [
 			{
-				'name': f'shared-nothing-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-single.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-sn-single_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-sn-single_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-single-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-sn-single-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-sn-single-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'locks-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-single.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-locks-single_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-locks-single_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'locks-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-single-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-locks-single-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-locks-single-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'tm-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-single.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-tm-single_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-tm-single_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'tm-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-single-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-tm-single-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-tm-single-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'rss-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-single.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-rss-single_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-rss-single_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'rss-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-single-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-rss-single-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-rss-single-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-single.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-scr-single_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-scr-single_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'scr-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-single-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-scr-single-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-scr-single-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		]
 	},
 	{
 		'processor': technologies,
 		'nfs': [
 			{
-				'name': f'shared-nothing-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-zipf.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-sn-zipf_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-sn-zipf_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-zipf-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-sn-zipf-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-sn-zipf-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'locks-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-zipf.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-locks-zipf_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-locks-zipf_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'locks-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-zipf-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-locks-zipf-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-locks-zipf-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'tm-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-zipf.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-tm-zipf_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-tm-zipf_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'tm-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-zipf-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-tm-zipf-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-tm-zipf-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'rss-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-zipf.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-rss-zipf_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-rss-zipf_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'rss-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-zipf-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-rss-zipf-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-rss-zipf-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-zipf.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-scr-zipf_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-scr-zipf_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'scr-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-zipf-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-scr-zipf-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-scr-zipf-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		]
 	},
 	{
 		'processor': technologies,
 		'nfs': [
 			{
-				'name': f'shared-nothing-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-imc-scr.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-sn-imc-scr_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-sn-imc-scr_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-imc-scr-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-sn-imc-scr-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-sn-imc-scr-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'locks-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-imc-scr.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-locks-imc-scr_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-locks-imc-scr_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'locks-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-imc-scr-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-locks-imc-scr-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-locks-imc-scr-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'tm-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-imc-scr.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-tm-imc-scr_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-tm-imc-scr_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'tm-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-imc-scr-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-tm-imc-scr-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-tm-imc-scr-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'rss-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-imc-scr.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-rss-imc-scr_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-rss-imc-scr_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'rss-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-imc-scr-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-rss-imc-scr-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-rss-imc-scr-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-imc-scr.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-scr-imc-scr_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-scr-imc-scr_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'scr-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-imc-scr-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-scr-imc-scr-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-scr-imc-scr-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		]
 	},
 	{
 		'processor': technologies,
 		'nfs': [
 			{
-				'name': f'shared-nothing-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-caida.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-sn-caida_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-sn-caida_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-caida-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-sn-caida-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-sn-caida-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'locks-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-caida.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-locks-caida_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-locks-caida_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'locks-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-caida-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-locks-caida-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-locks-caida-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'tm-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-caida.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-tm-caida_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-tm-caida_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'tm-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-caida-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-tm-caida-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-tm-caida-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'rss-{nf}',
-				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-caida.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-rss-caida_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-rss-caida_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'rss-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-caida-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-rss-caida-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-rss-caida-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		] + [
 			{
-				'name': f'scr-{nf}',
-				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-caida.csv',
-				'dat_mpps': f'{DAT_DIR}/{nf}-scr-caida_mpps.dat',
-				'dat_gbps': f'{DAT_DIR}/{nf}-scr-caida_gbps.dat',
-			} for nf in [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
+				'name': f'scr-{nf}-{pkt_size}B',
+				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-caida-{pkt_size}.csv',
+				'dat_mpps': f'{DAT_DIR}/{nf}-scr-caida-{pkt_size}B_mpps.dat',
+				'dat_gbps': f'{DAT_DIR}/{nf}-scr-caida-{pkt_size}B_gbps.dat',
+			} for nf in NF_NAMES for pkt_size in PKT_SIZES
 		]
 	},
 ]

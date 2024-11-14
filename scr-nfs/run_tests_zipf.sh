@@ -95,13 +95,13 @@ bench_balanced_nf_scr() {
 }
 
 state_compute_replication() {
-	bench_balanced_nf_scr "sbridge-scr" "sbridge" "dpdk_sbridge_scr_" "$CURRENT_EXPERIMENT_DIR" "sbridge-scr-zipf"
-    bench_balanced_nf_scr "cl-scr" "cl" "dpdk_cl_scr_" "$CURRENT_EXPERIMENT_DIR" "cl-scr-zipf"
-	bench_balanced_nf_scr "fw-scr" "fw" "dpdk_fw_scr_" "$CURRENT_EXPERIMENT_DIR" "fw-scr-zipf"
-	bench_balanced_nf_scr "nat-scr" "nat" "dpdk_nat_scr_" "$CURRENT_EXPERIMENT_DIR" "nat-scr-zipf"
-	bench_balanced_nf_scr "nop-scr" "nop" "dpdk_nop_scr_" "$CURRENT_EXPERIMENT_DIR" "nop-scr-zipf"
-	bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr-zipf"
-	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr-zipf"
+	bench_balanced_nf_scr "sbridge-scr" "sbridge" "dpdk_sbridge_scr_" "$CURRENT_EXPERIMENT_DIR" "sbridge-scr-zipf-64"
+    bench_balanced_nf_scr "cl-scr" "cl" "dpdk_cl_scr_" "$CURRENT_EXPERIMENT_DIR" "cl-scr-zipf-64"
+	bench_balanced_nf_scr "fw-scr" "fw" "dpdk_fw_scr_" "$CURRENT_EXPERIMENT_DIR" "fw-scr-zipf-64"
+	bench_balanced_nf_scr "nat-scr" "nat" "dpdk_nat_scr_" "$CURRENT_EXPERIMENT_DIR" "nat-scr-zipf-64"
+	bench_balanced_nf_scr "nop-scr" "nop" "dpdk_nop_scr_" "$CURRENT_EXPERIMENT_DIR" "nop-scr-zipf-64"
+	bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr-zipf-64"
+	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr-zipf-64"
 }
 
 state_compute_replication
