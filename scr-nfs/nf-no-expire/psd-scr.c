@@ -1362,10 +1362,7 @@ static void worker_main(void) {
         // Process the prefetched batch of packets
         for (uint16_t m = n; m < n + PKT_PREFETCH_DISTANCE && m < rx_count; m++) {
           uint8_t *data = rte_pktmbuf_mtod(mbufs[m], uint8_t *);
-          vigor_time_t VIGOR_NOW = 0;
-          if ((NUM_CORES - 1) == 0) {
-            VIGOR_NOW = current_time();
-          }
+          vigor_time_t VIGOR_NOW = current_time();
 
           /* This is the part related to SCR */
           int dummy_header_size = sizeof(struct ethhdr);
@@ -1389,7 +1386,7 @@ static void worker_main(void) {
             for (int j = i; j < i + MD_PREFETCH_DISTANCE && j < NUM_CORES - 1; j++) {
               md = (struct metadata_elem *)(md_start + j * sizeof(struct metadata_elem));
               nf_process_scr(map_ptr, vector_ptr, vector_1_ptr, dchain_ptr, map_1_ptr, vector_2_ptr, mbufs[m]->port, md, md->timestamp);
-              VIGOR_NOW = md->timestamp + 10;
+              // VIGOR_NOW = md->timestamp + 10;
             }
           }
 
