@@ -53,6 +53,7 @@
      defined RTE_VER_YEAR && RTE_VER_YEAR >= year)
 
 #if API_AT_LEAST_AS_RECENT_AS(22, 03)
+  #define MQ_TX_NONE RTE_ETH_MQ_TX_NONE
   #define MQ_RX_NONE RTE_ETH_MQ_RX_NONE
   #define RSS_RETA_SIZE_512 RTE_ETH_RSS_RETA_SIZE_512
   #define RETA_GROUP_SIZE RTE_ETH_RETA_GROUP_SIZE
@@ -60,6 +61,7 @@
   #define RSS_NONFRAG_IPV4_TCP RTE_ETH_RSS_NONFRAG_IPV4_TCP
   #define RSS_NONFRAG_IPV4_UDP RTE_ETH_RSS_NONFRAG_IPV4_UDP
 #else
+  #define MQ_TX_NONE ETH_MQ_TX_NONE
   #define MQ_RX_NONE ETH_MQ_RX_NONE
   #define RSS_RETA_SIZE_512 ETH_RSS_RETA_SIZE_512
   #define RETA_GROUP_SIZE RTE_RETA_GROUP_SIZE
@@ -1043,6 +1045,8 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES];
 struct lcore_conf {
   struct rte_mempool *mbuf_pool;
   uint16_t queue_id;
+  uint16_t start_tx_queue;
+  uint16_t end_tx_queue;
 };
 
 struct lcore_conf lcores_conf[RTE_MAX_LCORE];
@@ -1137,8 +1141,13 @@ int nf_process_scr(struct Map** map_ptr, struct Vector** vector_ptr, struct Doub
 static const uint16_t RX_QUEUE_SIZE = 1024;
 static const uint16_t TX_QUEUE_SIZE = 1024;
 
+static const uint8_t TX_QUEUES_PER_CORE = 2;
+
+uint16_t nb_rxd = RX_QUEUE_SIZE;
+uint16_t nb_txd = TX_QUEUE_SIZE;
+
 // Buffer count for mempools
-static const unsigned MEMPOOL_BUFFER_COUNT = 2048;
+static const unsigned MEMPOOL_BUFFER_COUNT = 8192;
 
 // Send the given packet to all devices except the packet's own
 void flood(struct rte_mbuf *packet, uint16_t nb_devices, uint16_t queue_id) {
@@ -1161,28 +1170,76 @@ void flood(struct rte_mbuf *packet, uint16_t nb_devices, uint16_t queue_id) {
 // Initializes the given device using the given memory pool
 static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   int retval;
-  const uint16_t num_queues = rte_lcore_count();
+  const uint16_t num_cores = rte_lcore_count();
+
+  uint16_t num_tx_queues = TX_QUEUES_PER_CORE * num_cores;
 
   struct rte_eth_conf device_conf = {0};
+  struct rte_eth_dev_info dev_info;
+  struct rte_eth_txconf *local_txconf;
+
+  retval = rte_eth_dev_info_get(device, &dev_info);
+  if (retval != 0) {
+      printf("Error during getting device (port %u) info: %s", device,
+                strerror(-retval));
+      return (-retval);
+  }
+
+  device_conf.txmode.mq_mode = MQ_TX_NONE;
+  device_conf.intr_conf.lsc = 0;
+
+  if (dev_info.tx_offload_capa & RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE) {
+      device_conf.txmode.offloads |= RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE;
+  }
 
   // Disable RSS to use only flow rules
   device_conf.rxmode.mq_mode = MQ_RX_NONE;
 
-  retval = rte_eth_dev_configure(device, num_queues, num_queues, &device_conf);
+  retval = rte_eth_dev_configure(device, num_cores, num_tx_queues, &device_conf);
   if (retval != 0) {
     return retval;
   }
 
+  retval = rte_eth_dev_adjust_nb_rx_tx_desc(device, &nb_rxd, &nb_txd);
+		if (retval < 0) {
+			printf("Cannot adjust number of descriptors: err=%d, port=%d\n", retval, device);
+      return retval;
+    }
+
   // Allocate and set up TX queues
-  for (int txq = 0; txq < num_queues; txq++) {
-    retval = rte_eth_tx_queue_setup(device, txq, TX_QUEUE_SIZE,
-                                    rte_eth_dev_socket_id(device), NULL);
+  for (int txq = 0; txq < num_tx_queues; txq++) {
+    local_txconf = &dev_info.default_txconf;
+    local_txconf->offloads = device_conf.txmode.offloads;
+    retval = rte_eth_tx_queue_setup(device, txq, nb_txd,
+                                    rte_eth_dev_socket_id(device), local_txconf);
     if (retval != 0) {
       return retval;
     }
   }
 
+  // Assign TX queues to each lcore
   unsigned lcore_id;
+  uint16_t queues_per_core = num_tx_queues / num_cores;
+  uint16_t extra_queues = num_tx_queues % num_cores;
+  uint16_t tx_queue = 0;
+
+  RTE_LCORE_FOREACH(lcore_id) {
+    uint16_t start_tx_queue = tx_queue;
+    uint16_t end_tx_queue = tx_queue + queues_per_core - 1;
+    
+    // Distribute any extra queues to cores as needed
+    if (extra_queues > 0) {
+      end_tx_queue++;
+      extra_queues--;
+    }
+    
+    lcores_conf[lcore_id].start_tx_queue = start_tx_queue;
+    lcores_conf[lcore_id].end_tx_queue = end_tx_queue;
+    tx_queue = end_tx_queue + 1;
+
+    printf("Core %u is responsible for TX queues [%u, %u]\n", lcore_id, start_tx_queue, end_tx_queue);
+  }
+
   int rxq = 0;
   RTE_LCORE_FOREACH(lcore_id) {
     printf("Setting up RX queue %d for lcore %u\n", rxq, lcore_id);
@@ -1197,7 +1254,7 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
     mac_map[rxq].queue_id = rxq;
 
 
-    retval = rte_eth_rx_queue_setup(device, rxq, RX_QUEUE_SIZE,
+    retval = rte_eth_rx_queue_setup(device, rxq, nb_rxd,
                                     rte_eth_dev_socket_id(device), NULL,
                                     mbuf_pools[rxq]);
     if (retval != 0) {
@@ -1265,6 +1322,9 @@ RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
 static void worker_main(void) {
   const unsigned lcore_id = rte_lcore_id();
   const uint16_t queue_id = lcores_conf[lcore_id].queue_id;
+  const uint16_t start_tx_queue = lcores_conf[lcore_id].start_tx_queue;
+  const uint16_t end_tx_queue = lcores_conf[lcore_id].end_tx_queue;
+  uint16_t current_tx_queue = start_tx_queue;
 
   if (!nf_init()) {
     rte_exit(EXIT_FAILURE, "Error initializing NF");
@@ -1328,7 +1388,7 @@ static void worker_main(void) {
             // Process the prefetched batch of metadata
             for (int j = i; j < i + MD_PREFETCH_DISTANCE && j < NUM_CORES - 1; j++) {
               md = (struct metadata_elem *)(md_start + j * sizeof(struct metadata_elem));
-              nf_process_scr(map_ptr, vector_ptr, dchain_ptr, mbufs[n]->port, md, md->timestamp);
+              nf_process_scr(map_ptr, vector_ptr, dchain_ptr, mbufs[m]->port, md, md->timestamp);
               VIGOR_NOW = md->timestamp + 10;
             }
           }
@@ -1336,7 +1396,7 @@ static void worker_main(void) {
           uint64_t offset = dummy_header_size + md_size;
           uint8_t *current_pkt_data = data + offset;
 
-          uint16_t dst_device = nf_process(map_ptr, vector_ptr, dchain_ptr, mbufs[n]->port, current_pkt_data, mbufs[n]->pkt_len, VIGOR_NOW);
+          uint16_t dst_device = nf_process(map_ptr, vector_ptr, dchain_ptr, mbufs[m]->port, current_pkt_data, mbufs[m]->pkt_len, VIGOR_NOW);
 
           if (dst_device == VIGOR_DEVICE) {
             rte_pktmbuf_free(mbufs[m]);
@@ -1349,9 +1409,27 @@ static void worker_main(void) {
         }
       }
 
-      uint16_t sent_count = rte_eth_tx_burst(1 - VIGOR_DEVICE, queue_id, mbufs_to_send, tx_count);
-      for (uint16_t n = sent_count; n < tx_count; n++) {
-        rte_pktmbuf_free(mbufs_to_send[n]);
+      uint16_t sent_count = 0;
+      while (sent_count < tx_count) {
+        uint16_t queue_to_use = current_tx_queue;
+
+        uint16_t sent = rte_eth_tx_burst(1 - VIGOR_DEVICE, queue_to_use,
+                                         &mbufs_to_send[sent_count],
+                                         tx_count - sent_count);
+
+        sent_count += sent;
+
+        current_tx_queue++;
+        if (current_tx_queue > end_tx_queue) {
+          current_tx_queue = start_tx_queue;
+        }
+      }
+      
+      if (unlikely(sent_count < tx_count)) {
+        printf("Freeing %d packets. We requested to send %d packets, but only %d were sent.\n", tx_count - sent_count, tx_count, sent_count);
+        do {
+          rte_pktmbuf_free(mbufs_to_send[sent_count]);
+        } while (++sent_count < tx_count);
       }
     }
   }
@@ -2168,7 +2246,7 @@ int nf_process_scr(struct Map** map_ptr, struct Vector** vector_ptr, struct Doub
 }
 
 int nf_process(struct Map** map_ptr, struct Vector** vector_ptr, struct DoubleChain** dchain_ptr, uint16_t device, uint8_t *packet, uint16_t packet_length, vigor_time_t now) {
-  // int number_of_freed_flows__24 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
+  int number_of_freed_flows__24 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
 
   // 125
@@ -2288,7 +2366,7 @@ int nf_process(struct Map** map_ptr, struct Vector** vector_ptr, struct DoubleCh
           int out_of_space__71 = !dchain_allocate_new_index((*dchain_ptr), &new_index__71, now);
 
           // 128
-          if (false == ((out_of_space__71))) {
+          if (false == ((out_of_space__71) & (0u == number_of_freed_flows__24))) {
             uint8_t* vector_value_out = 0u;
             vector_borrow((*vector_ptr), new_index__71, (void**)(&vector_value_out));
             vector_value_out[0u] = tcpudp_header_1->src_port & 0xff;
@@ -2355,7 +2433,7 @@ int nf_process(struct Map** map_ptr, struct Vector** vector_ptr, struct DoubleCh
 
         // 130
         else {
-          // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
           int checksum__95 = rte_ipv4_udptcp_cksum(ipv4_header_1, tcpudp_header_1);
           tcpudp_header_1->src_port = map_value_out & 0xffff;
           ipv4_header_1->hdr_checksum = checksum__95 & 0xffff;
