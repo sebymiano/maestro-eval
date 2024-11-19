@@ -34,6 +34,7 @@ run_balanced_bench_scr() {
     local pcap_pattern=$3
 	local exp_dir=$4
 	local exp_name=$5
+	local scr_gen=$6
 
 	local intermediate_results_file="$exp_dir/.imc_scr.csv"
 	local tmp_results_file="$exp_dir/.results.csv"
@@ -74,7 +75,9 @@ run_balanced_bench_scr() {
 		fi
 		
         tg_check_file "${TG_PCAPS_DIR}/${pcap_pattern}${n_cores}cores.pcap"
-		export ADDITIONAL_REPLAY_PCAP_FLAGS="--scr --num-rx-queues $n_cores"
+		if [ "$scr_gen" == "true" ]; then
+			export ADDITIONAL_REPLAY_PCAP_FLAGS="--scr --num-rx-queues $n_cores"
+		fi
 		__run_balanced_bench_with_n_cores "$nf_exe" "$pcap_file" "$n_cores" "$intermediate_results_file" "$tmp_results_file" "$exp_name"
 		export ADDITIONAL_REPLAY_PCAP_FLAGS=""
 	done
@@ -88,20 +91,34 @@ bench_balanced_nf_scr() {
 	local pcap_pattern=$3
 	local exp_dir=$4
 	local exp_name=$5
+	local scr_gen=$6
 
 	set_log "$exp_dir"
 	build_nf_scr "$nf_exe" $target
-	run_balanced_bench_scr "$nf_exe" "$target" "$pcap_pattern" "$exp_dir" "$exp_name"
+	run_balanced_bench_scr "$nf_exe" "$target" "$pcap_pattern" "$exp_dir" "$exp_name" $scr_gen
 }
 
 state_compute_replication() {
-	bench_balanced_nf_scr "sbridge-scr" "sbridge" "dpdk_sbridge_scr_" "$CURRENT_EXPERIMENT_DIR" "sbridge-scr-imc-scr-64"
-    bench_balanced_nf_scr "cl-scr" "cl" "dpdk_cl_scr_" "$CURRENT_EXPERIMENT_DIR" "cl-scr-imc-scr-64"
-	bench_balanced_nf_scr "fw-scr" "fw" "dpdk_fw_scr_" "$CURRENT_EXPERIMENT_DIR" "fw-scr-imc-scr-64"
-	bench_balanced_nf_scr "nat-scr" "nat" "dpdk_nat_scr_" "$CURRENT_EXPERIMENT_DIR" "nat-scr-imc-scr-64"
-	bench_balanced_nf_scr "nop-scr" "nop" "dpdk_nop_scr_" "$CURRENT_EXPERIMENT_DIR" "nop-scr-imc-scr-64"
-	bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr-imc-scr-64"
-	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr-imc-scr-64"
+	local scr_gen=$1
+	if [ "$scr_gen" == "true" ]; then
+		echo "Running with SCR"
+	else
+		echo "Running without SCR"
+		scr_gen="false"
+	fi
+
+	bench_balanced_nf_scr "sbridge-scr" "sbridge" "dpdk_sbridge_scr_" "$CURRENT_EXPERIMENT_DIR" "sbridge-scr-imc-scr-64" $scr_gen
+    bench_balanced_nf_scr "cl-scr" "cl" "dpdk_cl_scr_" "$CURRENT_EXPERIMENT_DIR" "cl-scr-imc-scr-64" $scr_gen
+	bench_balanced_nf_scr "fw-scr" "fw" "dpdk_fw_scr_" "$CURRENT_EXPERIMENT_DIR" "fw-scr-imc-scr-64" $scr_gen
+	bench_balanced_nf_scr "nat-scr" "nat" "dpdk_nat_scr_" "$CURRENT_EXPERIMENT_DIR" "nat-scr-imc-scr-64" $scr_gen
+	bench_balanced_nf_scr "nop-scr" "nop" "dpdk_nop_scr_" "$CURRENT_EXPERIMENT_DIR" "nop-scr-imc-scr-64" $scr_gen
+	bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr-imc-scr-64" $scr_gen
+	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr-imc-scr-64" $scr_gen
 }
 
-state_compute_replication
+# check if there is a argument passed and if the value is --no-scr
+if [ $# -eq 1 ] && [ $1 == "--no-scr" ]; then
+	state_compute_replication false
+else
+	state_compute_replication true
+fi
