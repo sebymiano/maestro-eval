@@ -1205,10 +1205,10 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   }
 
   retval = rte_eth_dev_adjust_nb_rx_tx_desc(device, &nb_rxd, &nb_txd);
-		if (retval < 0) {
-			printf("Cannot adjust number of descriptors: err=%d, port=%d\n", retval, device);
-      return retval;
-    }
+  if (retval < 0) {
+    printf("Cannot adjust number of descriptors: err=%d, port=%d\n", retval, device);
+    return retval;
+  }
 
   // Allocate and set up TX queues
   for (int txq = 0; txq < num_tx_queues; txq++) {
@@ -1432,7 +1432,8 @@ static void worker_main(void) {
       }
       
       if (unlikely(sent_count < tx_count)) {
-        printf("Freeing %d packets. We requested to send %d packets, but only %d were sent.\n", tx_count - sent_count, tx_count, sent_count);
+        rte_exit(1, "We requested to send %d packets, but only %d were sent.", tx_count, sent_count);
+        // printf("Freeing %d packets. We requested to send %d packets, but only %d were sent.\n", tx_count - sent_count, tx_count, sent_count);
         do {
           rte_pktmbuf_free(mbufs_to_send[sent_count]);
         } while (++sent_count < tx_count);

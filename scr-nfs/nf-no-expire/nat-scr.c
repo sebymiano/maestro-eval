@@ -1426,7 +1426,8 @@ static void worker_main(void) {
       }
       
       if (unlikely(sent_count < tx_count)) {
-        printf("Freeing %d packets. We requested to send %d packets, but only %d were sent.\n", tx_count - sent_count, tx_count, sent_count);
+        rte_exit(1, "We requested to send %d packets, but only %d were sent.", tx_count, sent_count);
+        // printf("Freeing %d packets. We requested to send %d packets, but only %d were sent.\n", tx_count - sent_count, tx_count, sent_count);
         do {
           rte_pktmbuf_free(mbufs_to_send[sent_count]);
         } while (++sent_count < tx_count);

@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <signal.h>
 
 #include <net/ethernet.h>
 #include <netinet/ip.h>
@@ -30,17 +29,6 @@
 #include <rte_mbuf.h>
 #include <rte_per_lcore.h>
 #include <rte_thash.h>
-#include <rte_flow.h>
-#include <rte_version.h>
-#include <rte_build_config.h>
-
-#include "mac_flow_rules.h"
-
-/**********************************************
- *
- *         State Compute Replication
- *
- **********************************************/
 
 #define API_OLDEST_THAN(year, month)                                           \
     ((defined RTE_VER_YEAR && RTE_VER_YEAR == year && defined RTE_VER_MONTH && \
@@ -55,6 +43,7 @@
 #if API_AT_LEAST_AS_RECENT_AS(22, 03)
   #define MQ_TX_NONE RTE_ETH_MQ_TX_NONE
   #define MQ_RX_NONE RTE_ETH_MQ_RX_NONE
+  #define MQ_RX_RSS RTE_ETH_MQ_RX_RSS
   #define RSS_RETA_SIZE_512 RTE_ETH_RSS_RETA_SIZE_512
   #define RETA_GROUP_SIZE RTE_ETH_RETA_GROUP_SIZE
   #define LCORE_FOREACH_WORKER RTE_LCORE_FOREACH_WORKER
@@ -63,23 +52,13 @@
 #else
   #define MQ_TX_NONE ETH_MQ_TX_NONE
   #define MQ_RX_NONE ETH_MQ_RX_NONE
+  #define MQ_RX_RSS ETH_MQ_RX_RSS
   #define RSS_RETA_SIZE_512 ETH_RSS_RETA_SIZE_512
   #define RETA_GROUP_SIZE RTE_RETA_GROUP_SIZE
   #define LCORE_FOREACH_WORKER RTE_LCORE_FOREACH_SLAVE
   #define RSS_NONFRAG_IPV4_TCP ETH_RSS_NONFRAG_IPV4_TCP
   #define RSS_NONFRAG_IPV4_UDP ETH_RSS_NONFRAG_IPV4_UDP
-  
 #endif
-
-// Array to store MAC-to-queue mappings for each lcore
-static struct mac_to_queue_map mac_map[RTE_MAX_LCORE];
-
-struct metadata_elem {
-  uint16_t ether_type;
-  uint16_t packet_len;
-  uint32_t dst_addr;
-  uint64_t timestamp;
-} __attribute__((packed));
 
 /**********************************************
  *
@@ -1103,13 +1082,13 @@ void set_reta(uint16_t device) {
 }
 
 uint32_t spread_data_among_cores(uint32_t capacity) {
-  // capacity /= rte_lcore_count();
+//  capacity /= rte_lcore_count();
 
   // find power of 2
   for (int pow = 0; pow < 32; pow++) {
-      if ((1 << pow) >= capacity) {
-          return 1 << pow;
-      }
+    if ((1 << pow) >= capacity) {
+      return 1 << pow;
+    }
   }
 
   // we should not be here
@@ -1124,8 +1103,8 @@ uint32_t spread_data_among_cores(uint32_t capacity) {
  **********************************************/
 
 bool nf_init(void);
-int nf_process(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleChain **dchain_ptr, struct Vector **vector_1_ptr, uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now);
-int nf_process_scr(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleChain **dchain_ptr, struct Vector **vector_1_ptr, uint16_t device, struct metadata_elem *state_elem, int64_t now);
+int nf_process(uint16_t device, uint8_t *buffer, uint16_t packet_length,
+               vigor_time_t now);
 
 #define FLOOD_FRAME ((uint16_t)-1)
 
@@ -1169,9 +1148,11 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
 
   uint16_t num_tx_queues = TX_QUEUES_PER_CORE * num_cores;
 
+  // device_conf passed to rte_eth_dev_configure cannot be NULL
   struct rte_eth_conf device_conf = {0};
   struct rte_eth_dev_info dev_info;
   struct rte_eth_txconf *local_txconf;
+  // device_conf.rxmode.hw_strip_crc = 1;
 
   retval = rte_eth_dev_info_get(device, &dev_info);
   if (retval != 0) {
@@ -1187,8 +1168,8 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
       device_conf.txmode.offloads |= RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE;
   }
 
-  // Disable RSS to use only flow rules
-  device_conf.rxmode.mq_mode = MQ_RX_NONE;
+  device_conf.rxmode.mq_mode = MQ_RX_RSS;
+  device_conf.rx_adv_conf.rss_conf = rss_conf[device];
 
   retval = rte_eth_dev_configure(device, num_cores, num_tx_queues, &device_conf);
   if (retval != 0) {
@@ -1196,10 +1177,11 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
   }
 
   retval = rte_eth_dev_adjust_nb_rx_tx_desc(device, &nb_rxd, &nb_txd);
-		if (retval < 0) {
-			printf("Cannot adjust number of descriptors: err=%d, port=%d\n", retval, device);
-      return retval;
-    }
+  if (retval < 0) {
+    printf("Cannot adjust number of descriptors: err=%d, port=%d\n", retval, device);
+    return retval;
+  }
+
 
   // Allocate and set up TX queues
   for (int txq = 0; txq < num_tx_queues; txq++) {
@@ -1212,7 +1194,6 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
     }
   }
 
-  // Assign TX queues to each lcore
   unsigned lcore_id;
   uint16_t queues_per_core = num_tx_queues / num_cores;
   uint16_t extra_queues = num_tx_queues % num_cores;
@@ -1237,24 +1218,12 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
 
   int rxq = 0;
   RTE_LCORE_FOREACH(lcore_id) {
-    printf("Setting up RX queue %d for lcore %u\n", rxq, lcore_id);
-    mac_map[rxq].mac[0] = 0x10;
-    mac_map[rxq].mac[1] = 0x10;
-    mac_map[rxq].mac[2] = 0x10;
-    mac_map[rxq].mac[3] = 0x10;
-    mac_map[rxq].mac[4] = 0x10;
-    mac_map[rxq].mac[5] = (uint8_t)(rxq);  // XX is 1, 2, 3, etc.
-
+    // Allocate and set up RX queues
     lcores_conf[lcore_id].queue_id = rxq;
-    mac_map[rxq].queue_id = rxq;
-
-
     retval = rte_eth_rx_queue_setup(device, rxq, nb_rxd,
                                     rte_eth_dev_socket_id(device), NULL,
                                     mbuf_pools[rxq]);
     if (retval != 0) {
-      fprintf(stderr, "Error setting up RX queue %d for device %d: %s\n",
-              rxq, device, rte_strerror(retval));
       return retval;
     }
 
@@ -1267,49 +1236,16 @@ static int nf_init_device(uint16_t device, struct rte_mempool **mbuf_pools) {
     return retval;
   }
 
-  cleanup_all_rules(device);
-  // Create MAC-based filtering rules
-  retval = create_mac_filter(device, mac_map, rxq);
-  if (retval != 0) {
-      printf("Error creating MAC filter\n");
-      return retval;
-  }
-
-  retval = create_drop_filter(device);
-  if (retval != 0) {
-      printf("Error creating drop filter\n");
-      return retval;
-  }
-
   // Enable RX in promiscuous mode, just in case
   rte_eth_promiscuous_enable(device);
   if (rte_eth_promiscuous_get(device) != 1) {
     return retval;
   }
 
+  set_reta(device);
+
   return 0;
 }
-
-void print_md(uint16_t device, uint16_t lcore_id, struct metadata_elem *md) {
-  if (md->ether_type != 0x0008)
-    return;
-
-  struct in_addr dst_ip;
-  dst_ip.s_addr = md->dst_addr;
-    
-  printf("Metadata: \n");
-  printf("  - Core ID: %u\n", lcore_id);
-  printf("  - Device: %u\n", device);
-  printf("  - Ether type: 0x%04x\n", rte_be_to_cpu_16(md->ether_type));
-  printf("  - Packet length: %u\n", rte_be_to_cpu_16(md->packet_len));
-  printf("  - Dst IP: %s\n", inet_ntoa(dst_ip));
-  printf("\n");
-}
-
-RTE_DEFINE_PER_LCORE(struct Map*, _map);
-RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
-RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
-RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
 
 static void worker_main(void) {
   const unsigned lcore_id = rte_lcore_id();
@@ -1324,81 +1260,36 @@ static void worker_main(void) {
 
   printf("Core %u forwarding packets.\n", rte_lcore_id());
 
-  const unsigned int NUM_CORES = rte_lcore_count();
-  printf("Number of cores for SCR: %d\n", NUM_CORES);
-
   if (rte_eth_dev_count_avail() != 2) {
     rte_exit(EXIT_FAILURE, "We assume there will be exactly 2 devices.");
   }
 
-  struct Map** map_ptr = &RTE_PER_LCORE(_map);
-  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
-  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
-
   while (1) {
     unsigned VIGOR_DEVICES_COUNT = rte_eth_dev_count_avail();
 
-    for (uint16_t VIGOR_DEVICE = 0; VIGOR_DEVICE < VIGOR_DEVICES_COUNT; VIGOR_DEVICE++) {
+    for (uint16_t VIGOR_DEVICE = 0; VIGOR_DEVICE < VIGOR_DEVICES_COUNT;
+         VIGOR_DEVICE++) {
       struct rte_mbuf *mbufs[VIGOR_BATCH_SIZE];
-      uint16_t rx_count = rte_eth_rx_burst(VIGOR_DEVICE, queue_id, mbufs, VIGOR_BATCH_SIZE);
+      uint16_t rx_count =
+          rte_eth_rx_burst(VIGOR_DEVICE, queue_id, mbufs, VIGOR_BATCH_SIZE);
 
       struct rte_mbuf *mbufs_to_send[VIGOR_BATCH_SIZE];
       uint16_t tx_count = 0;
 
-      for (uint16_t n = 0; n < rx_count; n += PKT_PREFETCH_DISTANCE) {
-        // Prefetch the next PKT_PREFETCH_DISTANCE packets
-        for (uint16_t p = 0; p < PKT_PREFETCH_DISTANCE && (n + p) < rx_count; p++) {
-          rte_prefetch_non_temporal(rte_pktmbuf_mtod(mbufs[n + p], void *));
-        }
+      for (uint16_t n = 0; n < rx_count; n++) {
+        uint8_t *data = rte_pktmbuf_mtod(mbufs[n], uint8_t *);
+        vigor_time_t VIGOR_NOW = current_time();
+        uint16_t dst_device =
+            nf_process(mbufs[n]->port, data, mbufs[n]->pkt_len, VIGOR_NOW);
 
-        // Process the prefetched batch of packets
-        for (uint16_t m = n; m < n + PKT_PREFETCH_DISTANCE && m < rx_count; m++) {
-          uint8_t *data = rte_pktmbuf_mtod(mbufs[m], uint8_t *);
-          vigor_time_t VIGOR_NOW = 0;
-          if ((NUM_CORES - 1) == 0) {
-            VIGOR_NOW = current_time();
-          }
-
-          /* This is the part related to SCR */
-          int dummy_header_size = sizeof(struct ethhdr);
-          int md_offset = dummy_header_size;
-          struct metadata_elem *md;
-          uint8_t *md_start = data + md_offset;
-          uint64_t md_size = (NUM_CORES - 1) * sizeof(struct metadata_elem);
-
-          if (md_start + md_size > (data + mbufs[m]->data_len)) {
-            printf("Error: We requested %lu metadata from a packet with len: %d\n", md_size, mbufs[m]->data_len);
-            continue;
-          }
-
-          // Prefetch the next MD_PREFETCH_DISTANCE metadata elements
-          for (int i = 0; i < NUM_CORES - 1; i += MD_PREFETCH_DISTANCE) {
-            for (int p = 0; p < MD_PREFETCH_DISTANCE && (i + p) < NUM_CORES - 1; p++) {
-              rte_prefetch_non_temporal(md_start + (i + p) * sizeof(struct metadata_elem));
-            }
-
-            // Process the prefetched batch of metadata
-            for (int j = i; j < i + MD_PREFETCH_DISTANCE && j < NUM_CORES - 1; j++) {
-              md = (struct metadata_elem *)(md_start + j * sizeof(struct metadata_elem));
-              nf_process_scr(map_ptr, vector_ptr, dchain_ptr, vector_1_ptr, mbufs[m]->port, md, md->timestamp);
-              VIGOR_NOW = md->timestamp + 10;
-            }
-          }
-
-          uint64_t offset = dummy_header_size + md_size;
-          uint8_t *current_pkt_data = data + offset;
-
-          uint16_t dst_device = nf_process(map_ptr, vector_ptr, dchain_ptr, vector_1_ptr, mbufs[m]->port, current_pkt_data, mbufs[m]->pkt_len, VIGOR_NOW);
-
-          if (dst_device == VIGOR_DEVICE) {
-            rte_pktmbuf_free(mbufs[m]);
-          } else if (dst_device == FLOOD_FRAME) {
-            flood(mbufs[m], VIGOR_DEVICES_COUNT, queue_id);
-          } else {
-            mbufs_to_send[tx_count] = mbufs[m];
-            tx_count++;
-          }
+        if (dst_device == VIGOR_DEVICE) {
+          rte_pktmbuf_free(mbufs[n]);
+        } else if (dst_device == FLOOD_FRAME) {
+          flood(mbufs[n], VIGOR_DEVICES_COUNT, queue_id);
+        } else {
+          
+          mbufs_to_send[tx_count] = mbufs[n];
+          tx_count++;
         }
       }
 
@@ -1847,13 +1738,6 @@ void rss_lut_balance(unsigned device, const char *pcap_fname) {
   }
 }
 
-static void signal_handler(int signum) {
-  printf("Received signal %d, exiting...\n", signum);
-  cleanup_all_rules(0);
-  cleanup_all_rules(1);
-  exit(0);
-}
-
 // Entry point
 int main(int argc, char **argv) {
   // Initialize the DPDK Environment Abstraction Layer (EAL)
@@ -1898,74 +1782,87 @@ int main(int argc, char **argv) {
 
   // Initialize all devices
   for (uint16_t device = 0; device < nb_devices; device++) {
+    rss_lut_balancer_init_lut(device);
+
+    if (args.valid_pcap) {
+      rss_lut_balance(device, args.pcap_fname);
+    }
+
     ret = nf_init_device(device, mbuf_pools);
     if (ret == 0) {
       printf("Initialized device %" PRIu16 ".\n", device);
     } else {
-      cleanup_all_rules(device);
       rte_exit(EXIT_FAILURE, "Cannot init device %" PRIu16 ": %d", device, ret);
     }
   }
 
-  signal(SIGINT, signal_handler);
-  signal(SIGTERM, signal_handler);
-  signal(SIGKILL, signal_handler);
-  
   LCORE_FOREACH_WORKER(lcore_id) {
-    printf("lauching worker on core %u\n", lcore_id);
     rte_eal_remote_launch((lcore_function_t *)worker_main, NULL, lcore_id);
   }
 
-  printf("Launching also worker thread. \n");
   worker_main();
 
-  cleanup_all_rules(0);
-  cleanup_all_rules(1);
   return 0;
 }
 
-struct DynamicValue {
-  uint64_t bucket_size;
-  int64_t bucket_time;
-};
 struct ip_addr {
   uint32_t addr;
 };
+struct TouchedPort {
+  uint32_t src;
+  uint16_t port;
+};
+uint32_t touched_port_hash(void* obj) {
+  struct TouchedPort *tp = (struct TouchedPort *)obj;
+
+  unsigned hash = 0;
+  hash = __builtin_ia32_crc32si(hash, tp->src);
+  hash = __builtin_ia32_crc32si(hash, tp->port);
+  return hash;
+}
 uint32_t ip_addr_hash(void* obj) {
-  struct ip_addr* id = (struct ip_addr*)obj;
+  struct ip_addr *id = (struct ip_addr *)obj;
 
   unsigned hash = 0;
   hash = __builtin_ia32_crc32si(hash, id->addr);
   return hash;
 }
-void DynamicValue_allocate(void* obj) {
-  struct DynamicValue* id = (struct DynamicValue*)obj;
-  id->bucket_size = 0;
-  id->bucket_time = 0;
-}
 bool ip_addr_eq(void* a, void* b) {
-  struct ip_addr* id1 = (struct ip_addr*)a;
-  struct ip_addr* id2 = (struct ip_addr*)b;
+  struct ip_addr *id1 = (struct ip_addr *)a;
+  struct ip_addr *id2 = (struct ip_addr *)b;
+
   return (id1->addr == id2->addr);
 }
-void ip_addr_allocate(void* obj) {
-  struct ip_addr* id = (struct ip_addr*)obj;
-  id->addr = 0;
+void counter_allocate(void* obj) { (uintptr_t) obj; }
+void touched_port_allocate(void* obj) {
+  struct TouchedPort *tp = (struct TouchedPort *)obj;
+  tp->src = 0;
+  tp->port = 0;
 }
+void ip_addr_allocate(void* obj) { (uintptr_t) obj; }
+bool touched_port_eq(void* a, void* b) {
+  struct TouchedPort *tp1 = (struct TouchedPort *)a;
+  struct TouchedPort *tp2 = (struct TouchedPort *)b;
+  return tp1->src == tp2->src && tp1->port == tp2->port;
+}
+struct tcpudp_hdr {
+  uint16_t src_port;
+  uint16_t dst_port;
+};
 
 uint8_t hash_key_0[RSS_HASH_KEY_LENGTH] = {
+  0x46, 0xe8, 0x0, 0x29, 0x0, 0x0, 0x0, 0x0, 
   0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 
-  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 
-  0xc8, 0x18, 0xe9, 0xe7, 0xe5, 0x8e, 0x52, 0xce, 
-  0xe3, 0x48, 0x92, 0x82, 0xb1, 0xb9, 0x37, 0x67, 
-  0x8d, 0xe5, 0xfd, 0xbb, 0xbb, 0xe1, 0x4a, 0x23
+  0xc9, 0xc6, 0x27, 0x5, 0x4d, 0xd6, 0x61, 0x33, 
+  0x15, 0xd8, 0xb, 0x3e, 0xbd, 0xc7, 0xc5, 0x3, 
+  0xaf, 0xc5, 0x2c, 0x13, 0xf9, 0xe0, 0x24, 0xc2
 };
 uint8_t hash_key_1[RSS_HASH_KEY_LENGTH] = {
-  0xf4, 0xb0, 0x7e, 0xa0, 0x2d, 0x76, 0x3, 0x58, 
-  0x8c, 0x6a, 0xa9, 0xaa, 0xcf, 0xb0, 0x57, 0x9a, 
-  0xff, 0x54, 0x4a, 0xe7, 0x10, 0x48, 0xbd, 0xe, 
-  0xa9, 0x47, 0xe3, 0x47, 0x9e, 0xbb, 0x38, 0x92, 
-  0x6b, 0xb6, 0x33, 0x98, 0x2d, 0x36, 0xf0, 0xb9
+  0x7, 0x7d, 0x96, 0xe2, 0x5b, 0x1d, 0x5e, 0xa, 
+  0x75, 0x22, 0x49, 0x30, 0xb1, 0x85, 0xfb, 0xea, 
+  0xf9, 0xc0, 0xff, 0x15, 0x9e, 0xd9, 0x4, 0x2c, 
+  0x68, 0xeb, 0xe3, 0x73, 0xf7, 0xa5, 0xa6, 0xfe, 
+  0x22, 0x3c, 0xe1, 0x7d, 0x59, 0x3f, 0x88, 0xcf
 };
 
 struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
@@ -1984,370 +1881,267 @@ struct rte_eth_rss_conf rss_conf[MAX_NUM_DEVICES] = {
 bool ip_addr_eq(void* a, void* b) ;
 uint32_t ip_addr_hash(void* obj) ;
 void ip_addr_allocate(void* obj) ;
-void DynamicValue_allocate(void* obj) ;
+void counter_allocate(void* obj) ;
+bool touched_port_eq(void* a, void* b) ;
+uint32_t touched_port_hash(void* obj) ;
+void touched_port_allocate(void* obj) ;
+RTE_DEFINE_PER_LCORE(struct Map*, _map);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector_1);
+RTE_DEFINE_PER_LCORE(struct DoubleChain*, _dchain);
+RTE_DEFINE_PER_LCORE(struct Map*, _map_1);
+RTE_DEFINE_PER_LCORE(struct Vector*, _vector_2);
 
 bool nf_init() {
   struct Map** map_ptr = &RTE_PER_LCORE(_map);
   struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
-  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
   struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
-  int map_allocation_succeeded__1 = map_allocate(ip_addr_eq, ip_addr_hash, spread_data_among_cores(65535u), &(*map_ptr));
+  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
+  struct Map** map_1_ptr = &RTE_PER_LCORE(_map_1);
+  struct Vector** vector_2_ptr = &RTE_PER_LCORE(_vector_2);
+  int map_allocation_succeeded__1 = map_allocate(ip_addr_eq, ip_addr_hash, spread_data_among_cores(1048576u), &(*map_ptr));
 
-  // 117
-  // 118
-  // 119
-  // 120
+  // 140
+  // 141
+  // 142
+  // 143
+  // 144
+  // 145
   if (map_allocation_succeeded__1) {
-    int vector_alloc_success__4 = vector_allocate(4u, spread_data_among_cores(65535u), ip_addr_allocate, &(*vector_ptr));
+    int vector_alloc_success__4 = vector_allocate(4u, spread_data_among_cores(1048576u), ip_addr_allocate, &(*vector_ptr));
 
-    // 117
-    // 118
-    // 119
+    // 140
+    // 141
+    // 142
+    // 143
+    // 144
     if (vector_alloc_success__4) {
-      int is_dchain_allocated__7 = dchain_allocate(spread_data_among_cores(65535u), &(*dchain_ptr));
+      int vector_alloc_success__7 = vector_allocate(4u, spread_data_among_cores(1048576u), counter_allocate, &(*vector_1_ptr));
 
-      // 117
-      // 118
-      if (is_dchain_allocated__7) {
-        int vector_alloc_success__10 = vector_allocate(16u, spread_data_among_cores(65535u), DynamicValue_allocate, &(*vector_1_ptr));
+      // 140
+      // 141
+      // 142
+      // 143
+      if (vector_alloc_success__7) {
+        int is_dchain_allocated__10 = dchain_allocate(spread_data_among_cores(1048576u), &(*dchain_ptr));
 
-        // 117
-        if (vector_alloc_success__10) {
-          return 1;
+        // 140
+        // 141
+        // 142
+        if (is_dchain_allocated__10) {
+          int map_allocation_succeeded__13 = map_allocate(touched_port_eq, touched_port_hash, spread_data_among_cores(4194304u), &(*map_1_ptr));
+
+          // 140
+          // 141
+          if (map_allocation_succeeded__13) {
+            int vector_alloc_success__16 = vector_allocate(6u, spread_data_among_cores(4194304u), touched_port_allocate, &(*vector_2_ptr));
+
+            // 140
+            if (vector_alloc_success__16) {
+              return 1;
+            }
+
+            // 141
+            else {
+              return 0;
+            } // !vector_alloc_success__16
+
+          }
+
+          // 142
+          else {
+            return 0;
+          } // !map_allocation_succeeded__13
+
         }
 
-        // 118
+        // 143
         else {
           return 0;
-        } // !vector_alloc_success__10
+        } // !is_dchain_allocated__10
 
       }
 
-      // 119
+      // 144
       else {
         return 0;
-      } // !is_dchain_allocated__7
+      } // !vector_alloc_success__7
 
     }
 
-    // 120
+    // 145
     else {
       return 0;
     } // !vector_alloc_success__4
 
   }
 
-  // 121
+  // 146
   else {
     return 0;
   } // !map_allocation_succeeded__1
 
 }
 
-int nf_process_scr(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleChain **dchain_ptr, struct Vector **vector_1_ptr, uint16_t device, struct metadata_elem *state_elem, int64_t now) {
-  // 123
-  // 124
-  // 125
-  // 126
-  // 127
-  // 128
-  // 129
-  if ((8u == state_elem->ether_type) & (20ul <= (4294967282u + state_elem->packet_len))) {
-    // int number_of_freed_flows__32 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 10000000000ul);
-
-    // 123
-    if (0u != device) {
-      return 0;
-    }
-
-    // 124
-    // 125
-    // 126
-    // 127
-    // 128
-    // 129
-    else {
-      uint8_t map_key[4];
-      map_key[0u] = state_elem->dst_addr & 0xff;
-      map_key[1u] = (state_elem->dst_addr >> 8) & 0xff;
-      map_key[2u] = (state_elem->dst_addr >> 16) & 0xff;
-      map_key[3u] = (state_elem->dst_addr >> 24) & 0xff;
-      int map_value_out;
-      int map_has_this_key__42 = map_get((*map_ptr), map_key, &map_value_out);
-
-      // 124
-      // 125
-      if (0u == map_has_this_key__42) {
-        uint32_t new_index__45;
-        int out_of_space__45 = !dchain_allocate_new_index((*dchain_ptr), &new_index__45, now);
-
-        // 124
-        if (false == ((out_of_space__45))) {
-          uint8_t* vector_value_out = 0u;
-          vector_borrow((*vector_ptr), new_index__45, (void**)(&vector_value_out));
-          vector_value_out[0u] = state_elem->dst_addr & 0xff;
-          vector_value_out[1u] = (state_elem->dst_addr >> 8) & 0xff;
-          vector_value_out[2u] = (state_elem->dst_addr >> 16) & 0xff;
-          vector_value_out[3u] = (state_elem->dst_addr >> 24) & 0xff;
-          uint8_t* vector_value_out_1 = 0u;
-          vector_borrow((*vector_1_ptr), new_index__45, (void**)(&vector_value_out_1));
-          vector_value_out_1[0u] = 10000000000ul - state_elem->packet_len;
-          vector_value_out_1[1u] = ((10000000000ul - state_elem->packet_len) >> 8ul) & 0xff;
-          vector_value_out_1[2u] = ((10000000000ul - state_elem->packet_len) >> 16ul) & 0xff;
-          vector_value_out_1[3u] = 84u;
-          vector_value_out_1[4u] = 2u;
-          vector_value_out_1[5u] = 0u;
-          vector_value_out_1[6u] = 0u;
-          vector_value_out_1[7u] = 0u;
-          vector_value_out_1[8u] = now & 0xff;
-          vector_value_out_1[9u] = (now >> 8) & 0xff;
-          vector_value_out_1[10u] = (now >> 16) & 0xff;
-          vector_value_out_1[11u] = (now >> 24) & 0xff;
-          vector_value_out_1[12u] = (now >> 32) & 0xff;
-          vector_value_out_1[13u] = (now >> 40) & 0xff;
-          vector_value_out_1[14u] = (now >> 48) & 0xff;
-          vector_value_out_1[15u] = (now >> 56) & 0xff;
-          map_put((*map_ptr), vector_value_out, new_index__45);
-          vector_return((*vector_ptr), new_index__45, vector_value_out);
-          vector_return((*vector_1_ptr), new_index__45, vector_value_out_1);
-          return 1;
-        }
-
-        // 125
-        else {
-          // dropping
-          return device;
-        } // !(false == ((out_of_space__45) & (0u == number_of_freed_flows__32)))
-
-      }
-
-      // 126
-      // 127
-      // 128
-      // 129
-      else {
-        // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
-        uint8_t* vector_value_out = 0u;
-        vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
-        vector_value_out[0u] = 10000000000ul - state_elem->packet_len;
-        vector_value_out[1u] = ((10000000000ul - state_elem->packet_len) >> 8ul) & 0xff;
-        vector_value_out[2u] = ((10000000000ul - state_elem->packet_len) >> 16ul) & 0xff;
-        vector_value_out[3u] = 84u;
-        vector_value_out[4u] = 2u;
-        vector_value_out[5u] = 0u;
-        vector_value_out[6u] = 0u;
-        vector_value_out[7u] = 0u;
-        vector_value_out[8u] = now & 0xff;
-        vector_value_out[9u] = (now >> 8) & 0xff;
-        vector_value_out[10u] = (now >> 16) & 0xff;
-        vector_value_out[11u] = (now >> 24) & 0xff;
-        vector_value_out[12u] = (now >> 32) & 0xff;
-        vector_value_out[13u] = (now >> 40) & 0xff;
-        vector_value_out[14u] = (now >> 48) & 0xff;
-        vector_value_out[15u] = (now >> 56) & 0xff;
-
-        // 126
-        // 127
-        // 128
-        if ((now - vector_value_out[8ul]) < 10000000000ul) {
-
-          // 126
-          // 127
-          if ((vector_value_out[0ul] + ((1000000000ul * (now - vector_value_out[8ul])) / 1000000000ul)) <= 10000000000ul) {
-
-            // 126
-            if ((vector_value_out[0ul] + ((1000000000ul * (now - vector_value_out[8ul])) / 1000000000ul)) <= state_elem->packet_len) {
-              vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-              // dropping
-              return device;
-            }
-
-            // 127
-            else {
-              vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-              return 1;
-            } // !((vector_value_out[0ul] + ((1000000000ul * (now - vector_value_out[8ul])) / 1000000000ul)) <= packet_length)
-
-          }
-
-          // 128
-          else {
-            vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-            return 1;
-          } // !((vector_value_out[0ul] + ((1000000000ul * (now - vector_value_out[8ul])) / 1000000000ul)) <= 10000000000ul)
-
-        }
-
-        // 129
-        else {
-          vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-          return 1;
-        } // !((now - vector_value_out[8ul]) < 10000000000ul)
-
-      } // !(0u == map_has_this_key__42)
-
-    } // !(0u != device)
-
-  }
-
-  // 130
-  else {
-    // dropping
-    return device;
-  } // !((8u == ether_header_1->ether_type) & (20ul <= (4294967282u + packet_length)))
-
-}
-
-int nf_process(struct Map **map_ptr, struct Vector **vector_ptr, struct DoubleChain **dchain_ptr, struct Vector **vector_1_ptr, uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
+int nf_process(uint16_t device, uint8_t* packet, uint16_t packet_length, int64_t now) {
+  struct Map** map_ptr = &RTE_PER_LCORE(_map);
+  struct Vector** vector_ptr = &RTE_PER_LCORE(_vector);
+  struct Vector** vector_1_ptr = &RTE_PER_LCORE(_vector_1);
+  struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
+  struct Map** map_1_ptr = &RTE_PER_LCORE(_map_1);
+  struct Vector** vector_2_ptr = &RTE_PER_LCORE(_vector_2);
   struct rte_ether_hdr* ether_header_1 = (struct rte_ether_hdr*)(packet);
 
-  // 123
-  // 124
-  // 125
-  // 126
-  // 127
-  // 128
-  // 129
+  // 148
+  // 149
+  // 150
+  // 151
+  // 152
+  // 153
+  // 154
   if ((8u == ether_header_1->ether_type) & (20ul <= (4294967282u + packet_length))) {
     struct rte_ipv4_hdr* ipv4_header_1 = (struct rte_ipv4_hdr*)(packet + 14u);
-    // int number_of_freed_flows__32 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 10000000000ul);
 
-    // 123
-    if (0u != device) {
-      return 0;
-    }
+    // 148
+    // 149
+    // 150
+    // 151
+    // 152
+    // 153
+    if (((6u == ipv4_header_1->next_proto_id) | (17u == ipv4_header_1->next_proto_id)) & ((4294967262u + packet_length) >= 4ul)) {
+      struct tcpudp_hdr* tcpudp_header_1 = (struct tcpudp_hdr*)(packet + (14u + 20u));
+      int number_of_freed_flows__42 = expire_items_single_map((*dchain_ptr), (*vector_ptr), (*map_ptr), now - 100000000000ul);
 
-    // 124
-    // 125
-    // 126
-    // 127
-    // 128
-    // 129
-    else {
-      uint8_t map_key[4];
-      map_key[0u] = ipv4_header_1->dst_addr & 0xff;
-      map_key[1u] = (ipv4_header_1->dst_addr >> 8) & 0xff;
-      map_key[2u] = (ipv4_header_1->dst_addr >> 16) & 0xff;
-      map_key[3u] = (ipv4_header_1->dst_addr >> 24) & 0xff;
-      int map_value_out;
-      int map_has_this_key__42 = map_get((*map_ptr), map_key, &map_value_out);
-
-      // 124
-      // 125
-      if (0u == map_has_this_key__42) {
-        uint32_t new_index__45;
-        int out_of_space__45 = !dchain_allocate_new_index((*dchain_ptr), &new_index__45, now);
-
-        // 124
-        if (false == ((out_of_space__45))) {
-          uint8_t* vector_value_out = 0u;
-          vector_borrow((*vector_ptr), new_index__45, (void**)(&vector_value_out));
-          vector_value_out[0u] = ipv4_header_1->dst_addr & 0xff;
-          vector_value_out[1u] = (ipv4_header_1->dst_addr >> 8) & 0xff;
-          vector_value_out[2u] = (ipv4_header_1->dst_addr >> 16) & 0xff;
-          vector_value_out[3u] = (ipv4_header_1->dst_addr >> 24) & 0xff;
-          uint8_t* vector_value_out_1 = 0u;
-          vector_borrow((*vector_1_ptr), new_index__45, (void**)(&vector_value_out_1));
-          vector_value_out_1[0u] = 10000000000ul - packet_length;
-          vector_value_out_1[1u] = ((10000000000ul - packet_length) >> 8ul) & 0xff;
-          vector_value_out_1[2u] = ((10000000000ul - packet_length) >> 16ul) & 0xff;
-          vector_value_out_1[3u] = 84u;
-          vector_value_out_1[4u] = 2u;
-          vector_value_out_1[5u] = 0u;
-          vector_value_out_1[6u] = 0u;
-          vector_value_out_1[7u] = 0u;
-          vector_value_out_1[8u] = now & 0xff;
-          vector_value_out_1[9u] = (now >> 8) & 0xff;
-          vector_value_out_1[10u] = (now >> 16) & 0xff;
-          vector_value_out_1[11u] = (now >> 24) & 0xff;
-          vector_value_out_1[12u] = (now >> 32) & 0xff;
-          vector_value_out_1[13u] = (now >> 40) & 0xff;
-          vector_value_out_1[14u] = (now >> 48) & 0xff;
-          vector_value_out_1[15u] = (now >> 56) & 0xff;
-          map_put((*map_ptr), vector_value_out, new_index__45);
-          vector_return((*vector_ptr), new_index__45, vector_value_out);
-          vector_return((*vector_1_ptr), new_index__45, vector_value_out_1);
-          return 1;
-        }
-
-        // 125
-        else {
-          // dropping
-          return device;
-        } // !(false == ((out_of_space__45) & (0u == number_of_freed_flows__32)))
-
+      // 148
+      if (0u != device) {
+        return 0;
       }
 
-      // 126
-      // 127
-      // 128
-      // 129
+      // 149
+      // 150
+      // 151
+      // 152
+      // 153
       else {
-        // dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
-        uint8_t* vector_value_out = 0u;
-        vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
-        vector_value_out[0u] = 10000000000ul - packet_length;
-        vector_value_out[1u] = ((10000000000ul - packet_length) >> 8ul) & 0xff;
-        vector_value_out[2u] = ((10000000000ul - packet_length) >> 16ul) & 0xff;
-        vector_value_out[3u] = 84u;
-        vector_value_out[4u] = 2u;
-        vector_value_out[5u] = 0u;
-        vector_value_out[6u] = 0u;
-        vector_value_out[7u] = 0u;
-        vector_value_out[8u] = now & 0xff;
-        vector_value_out[9u] = (now >> 8) & 0xff;
-        vector_value_out[10u] = (now >> 16) & 0xff;
-        vector_value_out[11u] = (now >> 24) & 0xff;
-        vector_value_out[12u] = (now >> 32) & 0xff;
-        vector_value_out[13u] = (now >> 40) & 0xff;
-        vector_value_out[14u] = (now >> 48) & 0xff;
-        vector_value_out[15u] = (now >> 56) & 0xff;
+        uint8_t map_key[4];
+        map_key[0u] = ipv4_header_1->src_addr & 0xff;
+        map_key[1u] = (ipv4_header_1->src_addr >> 8) & 0xff;
+        map_key[2u] = (ipv4_header_1->src_addr >> 16) & 0xff;
+        map_key[3u] = (ipv4_header_1->src_addr >> 24) & 0xff;
+        int map_value_out;
+        int map_has_this_key__53 = map_get((*map_ptr), map_key, &map_value_out);
 
-        // 126
-        // 127
-        // 128
-        if ((now - vector_value_out[8ul]) < 10000000000ul) {
+        // 149
+        // 150
+        if (0u == map_has_this_key__53) {
+          uint32_t new_index__56;
+          int out_of_space__56 = !dchain_allocate_new_index((*dchain_ptr), &new_index__56, now);
 
-          // 126
-          // 127
-          if ((vector_value_out[0ul] + ((1000000000ul * (now - vector_value_out[8ul])) / 1000000000ul)) <= 10000000000ul) {
+          // 149
+          if (false == ((out_of_space__56) & (0u == number_of_freed_flows__42))) {
+            uint8_t* vector_value_out = 0u;
+            vector_borrow((*vector_ptr), new_index__56, (void**)(&vector_value_out));
+            vector_value_out[0u] = ipv4_header_1->src_addr & 0xff;
+            vector_value_out[1u] = (ipv4_header_1->src_addr >> 8) & 0xff;
+            vector_value_out[2u] = (ipv4_header_1->src_addr >> 16) & 0xff;
+            vector_value_out[3u] = (ipv4_header_1->src_addr >> 24) & 0xff;
+            uint8_t* vector_value_out_1 = 0u;
+            vector_borrow((*vector_1_ptr), new_index__56, (void**)(&vector_value_out_1));
+            vector_value_out_1[0u] = 1u;
+            vector_value_out_1[1u] = 0u;
+            vector_value_out_1[2u] = 0u;
+            vector_value_out_1[3u] = 0u;
+            int number_of_freed_flows__61 = expire_items_single_map_iteratively((*vector_2_ptr), (*map_1_ptr), new_index__56, ((int*)(vector_value_out_1))[0]);
+            uint8_t* vector_value_out_2 = 0u;
+            vector_borrow((*vector_2_ptr), 64u * new_index__56, (void**)(&vector_value_out_2));
+            vector_value_out_2[0u] = ipv4_header_1->src_addr & 0xff;
+            vector_value_out_2[1u] = (ipv4_header_1->src_addr >> 8) & 0xff;
+            vector_value_out_2[2u] = (ipv4_header_1->src_addr >> 16) & 0xff;
+            vector_value_out_2[3u] = (ipv4_header_1->src_addr >> 24) & 0xff;
+            vector_value_out_2[4u] = tcpudp_header_1->dst_port & 0xff;
+            vector_value_out_2[5u] = (tcpudp_header_1->dst_port >> 8) & 0xff;
+            map_put((*map_ptr), vector_value_out, new_index__56);
+            map_put((*map_1_ptr), vector_value_out_2, 0u);
+            vector_return((*vector_ptr), new_index__56, vector_value_out);
+            vector_return((*vector_1_ptr), new_index__56, vector_value_out_1);
+            vector_return((*vector_2_ptr), 64u * new_index__56, vector_value_out_2);
+            return 1;
+          }
 
-            // 126
-            if ((vector_value_out[0ul] + ((1000000000ul * (now - vector_value_out[8ul])) / 1000000000ul)) <= packet_length) {
+          // 150
+          else {
+            return 1;
+          } // !(false == ((out_of_space__56) & (0u == number_of_freed_flows__42)))
+
+        }
+
+        // 151
+        // 152
+        // 153
+        else {
+          dchain_rejuvenate_index((*dchain_ptr), map_value_out, now);
+          uint8_t* vector_value_out = 0u;
+          vector_borrow((*vector_1_ptr), map_value_out, (void**)(&vector_value_out));
+          uint8_t map_key_1[6];
+          map_key_1[0u] = ipv4_header_1->src_addr & 0xff;
+          map_key_1[1u] = (ipv4_header_1->src_addr >> 8) & 0xff;
+          map_key_1[2u] = (ipv4_header_1->src_addr >> 16) & 0xff;
+          map_key_1[3u] = (ipv4_header_1->src_addr >> 24) & 0xff;
+          map_key_1[4u] = tcpudp_header_1->dst_port & 0xff;
+          map_key_1[5u] = (tcpudp_header_1->dst_port >> 8) & 0xff;
+          int map_value_out_1;
+          int map_has_this_key__86 = map_get((*map_1_ptr), map_key_1, &map_value_out_1);
+
+          // 151
+          // 152
+          if (0u == map_has_this_key__86) {
+
+            // 151
+            if (((int*)(vector_value_out))[0] < 64u) {
+              uint8_t* vector_value_out_1 = 0u;
+              vector_borrow((*vector_2_ptr), (64u * map_value_out) + ((int*)(vector_value_out))[0], (void**)(&vector_value_out_1));
+              vector_value_out_1[0u] = ipv4_header_1->src_addr & 0xff;
+              vector_value_out_1[1u] = (ipv4_header_1->src_addr >> 8) & 0xff;
+              vector_value_out_1[2u] = (ipv4_header_1->src_addr >> 16) & 0xff;
+              vector_value_out_1[3u] = (ipv4_header_1->src_addr >> 24) & 0xff;
+              vector_value_out_1[4u] = tcpudp_header_1->dst_port & 0xff;
+              vector_value_out_1[5u] = (tcpudp_header_1->dst_port >> 8) & 0xff;
+              map_put((*map_1_ptr), vector_value_out_1, ((int*)(vector_value_out))[0]);
+              vector_return((*vector_2_ptr), (64u * map_value_out) + ((int*)(vector_value_out))[0], vector_value_out_1);
+              vector_return((*vector_1_ptr), map_value_out, vector_value_out);
+              return 1;
+            }
+
+            // 152
+            else {
               vector_return((*vector_1_ptr), map_value_out, vector_value_out);
               // dropping
               return device;
-            }
-
-            // 127
-            else {
-              vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-              return 1;
-            } // !((vector_value_out[0ul] + ((1000000000ul * (now - vector_value_out[8ul])) / 1000000000ul)) <= packet_length)
+            } // !(((int*)(vector_value_out))[0] < 64u)
 
           }
 
-          // 128
+          // 153
           else {
             vector_return((*vector_1_ptr), map_value_out, vector_value_out);
             return 1;
-          } // !((vector_value_out[0ul] + ((1000000000ul * (now - vector_value_out[8ul])) / 1000000000ul)) <= 10000000000ul)
+          } // !(0u == map_has_this_key__86)
 
-        }
+        } // !(0u == map_has_this_key__53)
 
-        // 129
-        else {
-          vector_return((*vector_1_ptr), map_value_out, vector_value_out);
-          return 1;
-        } // !((now - vector_value_out[8ul]) < 10000000000ul)
+      } // !(0u != device)
 
-      } // !(0u == map_has_this_key__42)
+    }
 
-    } // !(0u != device)
+    // 154
+    else {
+      // dropping
+      return device;
+    } // !(((6u == ipv4_header_1->next_proto_id) | (17u == ipv4_header_1->next_proto_id)) & ((4294967262u + packet_length) >= 4ul))
 
   }
 
-  // 130
+  // 155
   else {
     // dropping
     return device;
