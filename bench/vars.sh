@@ -23,7 +23,7 @@ TG_EVAL_DIR=~/maestro-eval  # Path to this repo on the TG
 DUT_CORES="1,2,3,4,5,6,7,8" # FIXME: comma separated list of cores to be used (e.g. "0,1,2,3")
 # DUT_CORES="1,3"
 
-DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs/nf-no-expire
+DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs/nf-no-expire-rm-header
 DUT_MLNX_SYNT_DIR=${DUT_EVAL_DIR}/synthesized-mlnx/nf-no-expire-tx-queues
 DUT_MLNX_OTHERS_SYNT_DIR=${DUT_EVAL_DIR}/synthesized-mlnx/original-nf-tx-queues
 
@@ -40,4 +40,4 @@ TG_TX_CORES=6
 TG_RX_CORES=6
 
 ITERATIONS=1
-ITERATION_DURATION_SEC=5
+ITERATION_DURATION_SEC=3

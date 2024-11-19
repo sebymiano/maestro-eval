@@ -1401,15 +1401,15 @@ static void worker_main(void) {
             flood(mbufs[m], VIGOR_DEVICES_COUNT, queue_id);
           } else {
             offset = dummy_header_size + md_size;
-          // Remove the metadata section from the packet
-          if (unlikely(rte_pktmbuf_adj(mbufs[n], offset) == NULL)) {
-            // If adjusting the mbuf fails, free the packet and continue
-            printf("Error: Unable to adjust mbuf to remove metadata\n");
-            rte_pktmbuf_free(mbufs[n]);
-            continue;
-          }
-          mbufs_to_send[tx_count] = mbufs[n];
-          tx_count++;
+            // Remove the metadata section from the packet
+            if (unlikely(rte_pktmbuf_adj(mbufs[m], offset) == NULL)) {
+              // If adjusting the mbuf fails, free the packet and continue
+              printf("Error: Unable to adjust mbuf to remove metadata\n");
+              rte_pktmbuf_free(mbufs[m]);
+              continue;
+            }
+            mbufs_to_send[tx_count] = mbufs[m];
+            tx_count++;
           }
         }
       }
