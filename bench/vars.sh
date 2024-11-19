@@ -25,6 +25,7 @@ DUT_CORES="1,2,3,4,5,6,7,8" # FIXME: comma separated list of cores to be used (e
 
 DUT_SCR_DIR=${DUT_EVAL_DIR}/scr-nfs/nf-no-expire
 DUT_MLNX_SYNT_DIR=${DUT_EVAL_DIR}/synthesized-mlnx/nf-no-expire-tx-queues
+DUT_MLNX_OTHERS_SYNT_DIR=${DUT_EVAL_DIR}/synthesized-mlnx/original-nf-tx-queues
 
 TG_TX_DEV="0000:51:00.0" # FIXME: TX PCIe device on the TG
 TG_RX_DEV="0000:51:00.1" # FIXME: RX PCIe device on the TG
