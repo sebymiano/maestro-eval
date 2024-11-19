@@ -112,7 +112,7 @@ state_compute_replication() {
 	bench_balanced_nf_scr "fw-scr" "fw" "dpdk_fw_scr_" "$CURRENT_EXPERIMENT_DIR" "fw-scr-uniform-64" $scr_gen
 	bench_balanced_nf_scr "nat-scr" "nat" "dpdk_nat_scr_" "$CURRENT_EXPERIMENT_DIR" "nat-scr-uniform-64" $scr_gen
 	bench_balanced_nf_scr "nop-scr" "nop" "dpdk_nop_scr_" "$CURRENT_EXPERIMENT_DIR" "nop-scr-uniform-64" $scr_gen
-	bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr-uniform-64" $scr_gen
+	# bench_balanced_nf_scr "psd-scr" "psd" "dpdk_psd_scr_" "$CURRENT_EXPERIMENT_DIR" "psd-scr-uniform-64" $scr_gen
 	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr-uniform-64" $scr_gen
 }
 
