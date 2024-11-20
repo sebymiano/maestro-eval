@@ -139,6 +139,7 @@ gen_caida_trace() {
     local pkt_size=$2
 
     pcap=$ORIGINAL_PCAP_DIR/caida_${pkt_size}B.pcap
+    cp $pcap "${SCR_PCAPS_DIR}/caida_${pkt_size}B.pcap"
 
     gen_trace $target $pkt_size $pcap "caida"
 }
