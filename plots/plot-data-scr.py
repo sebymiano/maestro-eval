@@ -6,14 +6,14 @@ from pdfCropMargins import crop
 
 # Define the technologies and corresponding colors
 # technologies = ["SN", "Lock-based", "TM", "SCR", "RSS"]
-technologies = ["SN", "SCR", "RSS", "TM", "Locks"]
+technologies: list(str) = ["SN", "SCR", "RSS", "TM", "Locks"]
 colors = ["#332288", "#CC6677", "#88CCEE", "#44AA99", "#117733"]
 
 # Define the applications and data directory
-applications = ["NOP", "SBridge", "Pol", "FW", "NAT", "CL", "PSD"]
-workload_types = ["uniform", "single", "zipf", "imc-scr", "caida"]
-graph_types = ["mpps", "gbps"]
-pkt_sizes = [64]
+applications: list(str) = ["NOP", "SBridge", "Pol", "FW", "NAT", "CL", "PSD"]
+workload_types: list(str) = ["uniform", "single", "zipf", "imc-scr", "caida"]
+graph_types: list(str) = ["mpps", "gbps", "gbps_scr"]
+pkt_sizes: list(int) = [64]
 
 data_dir = "./dats"
 output_dir = "./out"  # Directory to save output plots
@@ -31,8 +31,12 @@ for pkt_size in pkt_sizes:
             # Load data from .dat files for the current workload type
             for app in applications:
                 for tech in technologies:
-                    # Construct the filename based on the application, technology, and workload type
-                    filename = os.path.join(data_dir, f"{app.lower()}-{tech.lower().replace(' ', '-')}-{workload}-{pkt_size}B_{graph_type}.dat")
+                    if tech.lower() != "scr" and graph_type.lower() == "gbps_scr":
+                        filename = os.path.join(data_dir, f"{app.lower()}-{tech.lower().replace(' ', '-')}-{workload}-{pkt_size}B_{graph_type.replace("_scr", "")}.dat")
+                    else:    
+                        # Construct the filename based on the application, technology, and workload type
+                        filename = os.path.join(data_dir, f"{app.lower()}-{tech.lower().replace(' ', '-')}-{workload}-{pkt_size}B_{graph_type}.dat")
+
                     if os.path.exists(filename):
                         # Load the data: assuming the second column contains the median values for each core
                         median_values = np.loadtxt(filename, usecols=[1], skiprows=1)  # Skip header row
