@@ -10,7 +10,7 @@ technologies: list(str) = ["SN", "SCR", "RSS", "TM", "Locks"]
 colors = ["#332288", "#CC6677", "#88CCEE", "#44AA99", "#117733"]
 
 # Define the applications and data directory
-applications: list(str) = ["NOP", "SBridge", "Pol", "FW", "NAT", "CL", "PSD"]
+applications: list(str) = ["NOP", "SBridge", "Pol", "FW", "NAT", "CL"]
 workload_types: list(str) = ["uniform", "single", "zipf", "imc-scr", "caida"]
 graph_types: list(str) = ["mpps", "gbps", "gbps_scr"]
 pkt_sizes: list(int) = [64]
