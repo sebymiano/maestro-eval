@@ -17,6 +17,10 @@ DAT_DIR = Path(SCRIPT_DIR) / Path("dats")
 NF_NAMES = [ 'nop', 'pol', 'sbridge', 'fw', 'nat', 'psd', 'cl' ]
 PKT_SIZES = [ 64 ]
 
+DUMMY_HDR_SIZE = 14
+ONE_BILLION = 1_000_000_000
+ONE_MILLION = 1_000_000
+
 MD_SIZE_FOR_NFS = {
 	"nop": 8,
 	"pol": 16,
@@ -77,13 +81,20 @@ def technologies(nfs):
 				M_mpps = max(x[2] for x in d)
 
 				# calculate real Gbps considering SCR overhead
-				if (nf['scr']):
+				if nf['scr']:
 					# SCR overhead is in MD_SIZE_FOR_NFS for each NF
-					_scr_overhead = MD_SIZE_FOR_NFS[nf['name']]
-					_scr_gbps = _median_gbps - _scr_overhead * _median_mpps
+					_scr_overhead = MD_SIZE_FOR_NFS[nf['nf'].lower()]
+					scr_factor = (cores - 1) * _scr_overhead * ONE_MILLION * 8
 
-					_scr_m_gbps = m_gbps - _scr_overhead * m_mpps
-					_scr_M_gbps = M_gbps - _scr_overhead * M_gbps
+					def compute_scr_gbps(base_gbps, base_mpps):
+						# Ensure floating-point division and format to 2 decimal places
+						result = (base_gbps * ONE_BILLION - (DUMMY_HDR_SIZE * base_mpps * ONE_MILLION * 8) - scr_factor * base_mpps) / ONE_BILLION
+						return round(result, 2)
+
+					_scr_gbps = compute_scr_gbps(_median_gbps, _median_mpps)
+					_scr_m_gbps = compute_scr_gbps(m_gbps, m_mpps)
+					_scr_M_gbps = compute_scr_gbps(M_gbps, M_mpps)
+
 					nf_data_scr_gbps.append((cores, _scr_gbps, _scr_m_gbps, _scr_M_gbps))
 
 				nf_data_mpps.append((cores, _median_mpps, m_mpps, M_mpps))
@@ -155,6 +166,7 @@ lut = [
 		'nfs': [
 			{
 				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-uniform-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-sn-uniform-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-sn-uniform-{pkt_size}B_gbps.dat',
@@ -163,6 +175,7 @@ lut = [
 		] + [
 			{
 				'name': f'locks-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-uniform-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-locks-uniform-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-locks-uniform-{pkt_size}B_gbps.dat',
@@ -171,6 +184,7 @@ lut = [
 		] + [
 			{
 				'name': f'tm-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-uniform-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-tm-uniform-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-tm-uniform-{pkt_size}B_gbps.dat',
@@ -179,6 +193,7 @@ lut = [
 		] + [
 			{
 				'name': f'rss-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-uniform-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-rss-uniform-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-rss-uniform-{pkt_size}B_gbps.dat',
@@ -187,6 +202,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-uniform-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-scr-uniform-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-scr-uniform-{pkt_size}B_gbps.dat',
@@ -200,6 +216,7 @@ lut = [
 		'nfs': [
 			{
 				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-single-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-sn-single-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-sn-single-{pkt_size}B_gbps.dat',
@@ -208,6 +225,7 @@ lut = [
 		] + [
 			{
 				'name': f'locks-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-single-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-locks-single-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-locks-single-{pkt_size}B_gbps.dat',
@@ -216,6 +234,7 @@ lut = [
 		] + [
 			{
 				'name': f'tm-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-single-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-tm-single-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-tm-single-{pkt_size}B_gbps.dat',
@@ -224,6 +243,7 @@ lut = [
 		] + [
 			{
 				'name': f'rss-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-single-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-rss-single-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-rss-single-{pkt_size}B_gbps.dat',
@@ -232,6 +252,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-single-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-scr-single-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-scr-single-{pkt_size}B_gbps.dat',
@@ -245,6 +266,7 @@ lut = [
 		'nfs': [
 			{
 				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-zipf-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-sn-zipf-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-sn-zipf-{pkt_size}B_gbps.dat',
@@ -253,6 +275,7 @@ lut = [
 		] + [
 			{
 				'name': f'locks-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-zipf-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-locks-zipf-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-locks-zipf-{pkt_size}B_gbps.dat',
@@ -261,6 +284,7 @@ lut = [
 		] + [
 			{
 				'name': f'tm-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-zipf-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-tm-zipf-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-tm-zipf-{pkt_size}B_gbps.dat',
@@ -269,6 +293,7 @@ lut = [
 		] + [
 			{
 				'name': f'rss-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-zipf-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-rss-zipf-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-rss-zipf-{pkt_size}B_gbps.dat',
@@ -277,6 +302,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-zipf-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-scr-zipf-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-scr-zipf-{pkt_size}B_gbps.dat',
@@ -290,6 +316,7 @@ lut = [
 		'nfs': [
 			{
 				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-imc-scr-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-sn-imc-scr-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-sn-imc-scr-{pkt_size}B_gbps.dat',
@@ -298,6 +325,7 @@ lut = [
 		] + [
 			{
 				'name': f'locks-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-imc-scr-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-locks-imc-scr-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-locks-imc-scr-{pkt_size}B_gbps.dat',
@@ -306,6 +334,7 @@ lut = [
 		] + [
 			{
 				'name': f'tm-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-imc-scr-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-tm-imc-scr-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-tm-imc-scr-{pkt_size}B_gbps.dat',
@@ -314,6 +343,7 @@ lut = [
 		] + [
 			{
 				'name': f'rss-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-imc-scr-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-rss-imc-scr-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-rss-imc-scr-{pkt_size}B_gbps.dat',
@@ -322,6 +352,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-imc-scr-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-scr-imc-scr-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-scr-imc-scr-{pkt_size}B_gbps.dat',
@@ -335,6 +366,7 @@ lut = [
 		'nfs': [
 			{
 				'name': f'shared-nothing-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-sn-caida-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-sn-caida-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-sn-caida-{pkt_size}B_gbps.dat',
@@ -343,6 +375,7 @@ lut = [
 		] + [
 			{
 				'name': f'locks-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-locks-caida-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-locks-caida-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-locks-caida-{pkt_size}B_gbps.dat',
@@ -351,6 +384,7 @@ lut = [
 		] + [
 			{
 				'name': f'tm-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-tm-caida-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-tm-caida-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-tm-caida-{pkt_size}B_gbps.dat',
@@ -359,6 +393,7 @@ lut = [
 		] + [
 			{
 				'name': f'rss-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR}/technologies/{nf}-rss-caida-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-rss-caida-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-rss-caida-{pkt_size}B_gbps.dat',
@@ -367,6 +402,7 @@ lut = [
 		] + [
 			{
 				'name': f'scr-{nf}-{pkt_size}B',
+				'nf': nf,
 				'infile': f'{BENCH_DIR_SCR}/{nf}-scr-caida-{pkt_size}.csv',
 				'dat_mpps': f'{DAT_DIR}/{nf}-scr-caida-{pkt_size}B_mpps.dat',
 				'dat_gbps': f'{DAT_DIR}/{nf}-scr-caida-{pkt_size}B_gbps.dat',

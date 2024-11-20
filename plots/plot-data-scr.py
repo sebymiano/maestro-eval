@@ -6,14 +6,14 @@ from pdfCropMargins import crop
 
 # Define the technologies and corresponding colors
 # technologies = ["SN", "Lock-based", "TM", "SCR", "RSS"]
-technologies: list(str) = ["SN", "SCR", "RSS", "TM", "Locks"]
+technologies: list[str] = ["SN", "SCR", "RSS", "TM", "Locks"]
 colors = ["#332288", "#CC6677", "#88CCEE", "#44AA99", "#117733"]
 
 # Define the applications and data directory
-applications: list(str) = ["NOP", "SBridge", "Pol", "FW", "NAT", "CL"]
-workload_types: list(str) = ["uniform", "single", "zipf", "imc-scr", "caida"]
-graph_types: list(str) = ["mpps", "gbps", "gbps_scr"]
-pkt_sizes: list(int) = [64]
+applications: list[str] = ["NOP", "SBridge", "Pol", "FW", "NAT", "CL"]
+workload_types: list[str] = ["uniform", "single", "zipf", "imc-scr", "caida"]
+graph_types: list[str] = ["mpps", "gbps", "gbps_scr"]
+pkt_sizes: list[int] = [64]
 
 data_dir = "./dats"
 output_dir = "./out"  # Directory to save output plots
@@ -32,7 +32,7 @@ for pkt_size in pkt_sizes:
             for app in applications:
                 for tech in technologies:
                     if tech.lower() != "scr" and graph_type.lower() == "gbps_scr":
-                        filename = os.path.join(data_dir, f"{app.lower()}-{tech.lower().replace(' ', '-')}-{workload}-{pkt_size}B_{graph_type.replace("_scr", "")}.dat")
+                        filename = os.path.join(data_dir, f"{app.lower()}-{tech.lower().replace(' ', '-')}-{workload}-{pkt_size}B_{graph_type.replace('_scr', '')}.dat")
                     else:    
                         # Construct the filename based on the application, technology, and workload type
                         filename = os.path.join(data_dir, f"{app.lower()}-{tech.lower().replace(' ', '-')}-{workload}-{pkt_size}B_{graph_type}.dat")
