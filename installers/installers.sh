@@ -80,8 +80,8 @@ setup_docker() {
 
 install_doca() {
 	export DOCA_URL="https://linux.mellanox.com/public/repo/doca/2.9.0/ubuntu22.04/x86_64/"
-	curl https://linux.mellanox.com/public/repo/doca/GPG-KEY-Mellanox.pub | gpg --dearmor > /etc/apt/trusted.gpg.d/GPG-KEY-Mellanox.pub
-	echo "deb [signed-by=/etc/apt/trusted.gpg.d/GPG-KEY-Mellanox.pub] $DOCA_URL ./" > /etc/apt/sources.list.d/doca.list
+	sudo bash -c "curl https://linux.mellanox.com/public/repo/doca/GPG-KEY-Mellanox.pub | gpg --dearmor > /etc/apt/trusted.gpg.d/GPG-KEY-Mellanox.pub"
+	sudo bash -c 'echo "deb [signed-by=/etc/apt/trusted.gpg.d/GPG-KEY-Mellanox.pub] $DOCA_URL ./" > /etc/apt/sources.list.d/doca.list'
 	sudo apt-get update
 	sudo apt-get -y install doca-all doca-extra
 	sudo /etc/init.d/openibd restart
@@ -131,7 +131,7 @@ install_maestro() {
 					git apply librs3_mlnx_key_size_40.patch
 				popd
 			fi
-			
+
 			./build.sh
 		popd
 	popd
