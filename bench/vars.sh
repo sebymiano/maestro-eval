@@ -14,8 +14,8 @@ DUT_SCR_PCAPS_DIR="${SCR_PCAPS_DIR}"
 TG_SCR_PCAPS_DIR="${SCR_PCAPS_DIR}"
 
 # SSH entries. Make sure these are accessible!
-DUT="smiano@sm110p-10s10619.wisc.cloudlab.us" # FIXME: DUT ssh entry
-TG="smiano@sm110p-10s10620.wisc.cloudlab.us"  # FIXME: TG ssh entry
+DUT="smiano@sm110p-10s10611.wisc.cloudlab.us" # FIXME: DUT ssh entry
+TG="smiano@sm110p-10s10611.wisc.cloudlab.us"  # FIXME: TG ssh entry
 
 DUT_EVAL_DIR=~/maestro-eval # Path to this repo on the DUT
 TG_EVAL_DIR=~/maestro-eval  # Path to this repo on the TG
@@ -33,8 +33,8 @@ TG_RX_DEV="0000:51:00.1" # FIXME: RX PCIe device on the TG
 DUT_TX_DEV="0000:51:00.1" # FIXME: TX PCIe device on the DUT
 DUT_RX_DEV="0000:51:00.0" # FIXME: RX PCIe device on the DUT
 
-PCAP_SRC_MAC="b8:3f:d2:13:08:fe"
-PCAP_DST_MAC="b8:3f:d2:13:08:ff"
+PCAP_SRC_MAC="b8:3f:d2:13:08:f6"
+PCAP_DST_MAC="b8:3f:d2:13:08:f7"
 
 TG_TX_CORES=6
 TG_RX_CORES=6

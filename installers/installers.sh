@@ -51,7 +51,40 @@ setup() {
 		wireshark-common \
 		gnuplot \
 		texlive-extra-utils \
-		poppler-utils
+		poppler-utils \
+		byobu \
+		htop 
+}
+
+setup_docker() {
+	# Add Docker's official GPG key:
+	sudo apt-get update
+	sudo apt-get install ca-certificates curl -y
+	sudo install -m 0755 -d /etc/apt/keyrings
+	sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+	sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+	# Add the repository to Apt sources:
+	echo \
+	"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+	$(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+	sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+	sudo apt-get update
+	sudo apt-get -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-compose
+
+	sudo groupadd docker
+	sudo usermod -aG docker $USER
+	newgrp docker
+	docker run hello-world
+}
+
+install_doca() {
+	export DOCA_URL="https://linux.mellanox.com/public/repo/doca/2.9.0/ubuntu22.04/x86_64/"
+	curl https://linux.mellanox.com/public/repo/doca/GPG-KEY-Mellanox.pub | gpg --dearmor > /etc/apt/trusted.gpg.d/GPG-KEY-Mellanox.pub
+	echo "deb [signed-by=/etc/apt/trusted.gpg.d/GPG-KEY-Mellanox.pub] $DOCA_URL ./" > /etc/apt/sources.list.d/doca.list
+	sudo apt-get update
+	sudo apt-get -y install doca-all doca-extra
+	sudo /etc/init.d/openibd restart
 }
 
 setup_python_venv() {
@@ -69,22 +102,36 @@ install_maestro() {
 		return 0
 	fi
 
+	local MLNX=false
+
+	# Check if input argument is set; if it is true, set MLNX to true
+	if [ $# -eq 1 ]; then
+		if [ $1 == "true" ]; then
+			MLNX=true
+		fi
+	fi
+
+
 	pushd $BUILD_DIR
 		git clone https://github.com/snaplab-dpss/maestro.git $MAESTRO_DIR
 
 		pushd $MAESTRO_DIR
 			git submodule update --init --recursive
-			# cp $SCRIPT_DIR/patches/maestro_mlnx_key_size_40.patch $MAESTRO_DIR/maestro_mlnx_key_size_40.patch
-			# cp $SCRIPT_DIR/patches/maestro_mlnx_key_size_40_with_swap.patch $MAESTRO_DIR/maestro_mlnx_key_size_40_with_swap.patch
-			cp $SCRIPT_DIR/patches/mlnx_maestro_with_spread_data_fixed.patch $MAESTRO_DIR/mlnx_maestro_with_spread_data_fixed.patch
+
+			if [ $MLNX == true ]; then
+				# cp $SCRIPT_DIR/patches/maestro_mlnx_key_size_40.patch $MAESTRO_DIR/maestro_mlnx_key_size_40.patch
+				# cp $SCRIPT_DIR/patches/maestro_mlnx_key_size_40_with_swap.patch $MAESTRO_DIR/maestro_mlnx_key_size_40_with_swap.patch
+				cp $SCRIPT_DIR/patches/mlnx_maestro_with_spread_data_fixed.patch $MAESTRO_DIR/mlnx_maestro_with_spread_data_fixed.patch
+				
+				cp $SCRIPT_DIR/patches/librs3_mlnx_key_size_40.patch $MAESTRO_DIR/deps/librs3/librs3_mlnx_key_size_40.patch
+				# git apply maestro_mlnx_key_size_40.patch
+				# git apply maestro_mlnx_key_size_40_with_swap.patch
+				git apply mlnx_maestro_with_spread_data_fixed.patch
+				pushd deps/librs3
+					git apply librs3_mlnx_key_size_40.patch
+				popd
+			fi
 			
-			cp $SCRIPT_DIR/patches/librs3_mlnx_key_size_40.patch $MAESTRO_DIR/deps/librs3/librs3_mlnx_key_size_40.patch
-			# git apply maestro_mlnx_key_size_40.patch
-			# git apply maestro_mlnx_key_size_40_with_swap.patch
-			git apply mlnx_maestro_with_spread_data_fixed.patch
-			pushd deps/librs3
-				git apply librs3_mlnx_key_size_40.patch
-			popd
 			./build.sh
 		popd
 	popd
