@@ -14,7 +14,7 @@ DUT_SCR_PCAPS_DIR="${SCR_PCAPS_DIR}"
 TG_SCR_PCAPS_DIR="${SCR_PCAPS_DIR}"
 
 # SSH entries. Make sure these are accessible!
-DUT="smiano@sm110p-10s10611.wisc.cloudlab.us" # FIXME: DUT ssh entry
+DUT="smiano@sm110p-10s10609.wisc.cloudlab.us" # FIXME: DUT ssh entry
 TG="smiano@sm110p-10s10611.wisc.cloudlab.us"  # FIXME: TG ssh entry
 
 DUT_EVAL_DIR=~/maestro-eval # Path to this repo on the DUT
