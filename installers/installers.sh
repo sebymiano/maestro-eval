@@ -146,7 +146,7 @@ install_dpdk() {
 		mv dpdk-stable-$DPDK_VERSION $DPDK_DIR
 
 		pushd $DPDK_DIR
-			meson build
+			meson build -Ddisable_drivers=net/af_xdp,regex/cn9k
 			ninja -C build
 			sudo ninja -C build install
 			sudo ldconfig
