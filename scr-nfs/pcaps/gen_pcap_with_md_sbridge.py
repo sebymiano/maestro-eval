@@ -153,6 +153,14 @@ if __name__ == "__main__":
         help="Source MAC address to use in the generated PCAP file",
         default="00:00:00:00:00:01",
     )
+    
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        dest="quiet",
+        help="Do not print progress bar",
+        action="store_true",
+    )
 
     parser.add_argument(
         "--dst_mac",

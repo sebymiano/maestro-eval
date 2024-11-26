@@ -156,6 +156,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--quiet",
+        "-q",
+        dest="quiet",
+        help="Do not print progress bar",
+        action="store_true",
+    )
+    
+    parser.add_argument(
         "--dst_mac",
         "-d",
         dest="dst_mac",
