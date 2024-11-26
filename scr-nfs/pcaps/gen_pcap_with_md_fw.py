@@ -90,7 +90,7 @@ def get_md_from_pkt(pkt):
     return md_elem
 
 
-def gen_pcap_with_md_fw(num_cores, dst_mac, output_path, input_file, pkt_len, overwrite=False, quiet=False):
+def gen_pcap_with_md_fw(num_cores, src_mac, dst_mac, output_path, input_file, pkt_len, scr_on, overwrite=False, quiet=False):
     print(f"[gen_pcap_with_md_fw] start num_cores: {num_cores}")
 
     if not os.path.exists(output_path):
@@ -125,8 +125,12 @@ def gen_pcap_with_md_fw(num_cores, dst_mac, output_path, input_file, pkt_len, ov
             md_bytes = b""
             for x in pkt_history:
                 md_bytes += bytes(x)
-            # src_mac is used for rss
-            src_mac = f"10:10:10:10:10:{format(i % num_cores, '02x')}"
+            if scr_on == "src":
+                # src_mac is used for rss
+                src_mac = f"10:10:10:10:10:{format(i % num_cores, '02x')}"
+            else:
+                # dst_mac is used for rss
+                dst_mac = f"10:10:10:10:10:{format(i % num_cores, '02x')}"
 
             new_pkt = (
                 Ether(dst=dst_mac, src=src_mac, type=ETH_P_IP) / md_bytes / curr_pkt
@@ -169,6 +173,15 @@ if __name__ == "__main__":
         type=int,
         default=1,
     )
+
+    parser.add_argument(
+        "--src_mac",
+        "-s",
+        dest="src_mac",
+        help="Source MAC address to use in the generated PCAP file",
+        default="00:00:00:00:00:01",
+    )
+
     parser.add_argument(
         "--dst_mac",
         "-d",
@@ -193,9 +206,18 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    parser.add_argument(
+        "--scr-on",
+        choices=["dst", "src"],
+        dest="scr_on",
+        help="Choose which MAC address to use for SCR",
+        default="src",
+    )
+
     args = parser.parse_args()
     dst_mac = args.dst_mac
+    src_mac = args.src_mac
 
     gen_pcap_with_md_fw(
-        args.num_cores, dst_mac, args.output_path, args.input_file, args.pkt_len, args.overwrite, args.quiet
+        args.num_cores, src_mac, dst_mac, args.output_path, args.input_file, args.pkt_len, args.scr_on, args.overwrite, args.quiet
     )
