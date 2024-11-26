@@ -44,6 +44,9 @@ struct mac_to_queue_map {
     struct rte_flow *flow;  // Pointer to the created flow rule
 };
 
+/* This is a catch all filter, since we have a forwarding rule set for all the other MAC
+ * this one will catch any packets that are not matched by the other rules and drop them.
+ */
 static int create_drop_filter(uint16_t port_id) {
   struct rte_flow_attr attr;
   struct rte_flow_item pattern[2] = {};
