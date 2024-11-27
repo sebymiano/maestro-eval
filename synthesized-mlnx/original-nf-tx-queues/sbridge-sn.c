@@ -1082,7 +1082,7 @@ void set_reta(uint16_t device) {
 }
 
 uint32_t spread_data_among_cores(uint32_t capacity) {
-//  capacity /= rte_lcore_count();
+ capacity /= rte_lcore_count();
 
   // find power of 2
   for (int pow = 0; pow < 32; pow++) {
@@ -1898,7 +1898,7 @@ bool nf_init() {
   struct Map** map_1_ptr = &RTE_PER_LCORE(_map_1);
   struct Vector** vector_2_ptr = &RTE_PER_LCORE(_vector_2);
   struct DoubleChain** dchain_ptr = &RTE_PER_LCORE(_dchain);
-  int map_allocation_succeeded__1 = map_allocate(rte_ether_addr_eq, rte_ether_addr_hash, spread_data_among_cores(1048576u), &(*map_ptr));
+  int map_allocation_succeeded__1 = map_allocate(rte_ether_addr_eq, rte_ether_addr_hash, spread_data_among_cores(65536u), &(*map_ptr));
 
   // 82
   // 83
@@ -1907,7 +1907,7 @@ bool nf_init() {
   // 86
   // 87
   if (map_allocation_succeeded__1) {
-    int vector_alloc_success__4 = vector_allocate(6u, spread_data_among_cores(1048576u), rte_ether_addr_allocate, &(*vector_ptr));
+    int vector_alloc_success__4 = vector_allocate(6u, spread_data_among_cores(65536u), rte_ether_addr_allocate, &(*vector_ptr));
 
     // 82
     // 83
@@ -1915,7 +1915,7 @@ bool nf_init() {
     // 85
     // 86
     if (vector_alloc_success__4) {
-      int vector_alloc_success__7 = vector_allocate(2u, spread_data_among_cores(1048576u), DynamicValue_allocate, &(*vector_1_ptr));
+      int vector_alloc_success__7 = vector_allocate(2u, spread_data_among_cores(65536u), DynamicValue_allocate, &(*vector_1_ptr));
 
       // 82
       // 83
@@ -1933,7 +1933,7 @@ bool nf_init() {
           // 82
           // 83
           if (vector_alloc_success__13) {
-            int is_dchain_allocated__16 = dchain_allocate(spread_data_among_cores(1048576u), &(*dchain_ptr));
+            int is_dchain_allocated__16 = dchain_allocate(spread_data_among_cores(65536u), &(*dchain_ptr));
 
             // 82
             if (is_dchain_allocated__16) {
