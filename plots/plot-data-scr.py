@@ -1,8 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-
+import argparse
+from pathlib import Path
 from pdfCropMargins import crop
+
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # Define the technologies and corresponding colors
 # technologies = ["SN", "Lock-based", "TM", "SCR", "RSS"]
@@ -15,8 +18,17 @@ workload_types: list[str] = ["uniform", "single", "zipf", "imc-scr", "caida"]
 graph_types: list[str] = ["mpps", "gbps", "gbps_scr"]
 pkt_sizes: list[int] = [64]
 
-data_dir = "./dats"
-output_dir = "./out"  # Directory to save output plots
+DEFAULT_DAT_DIR = Path(SCRIPT_DIR) / Path("dats")
+DEFAULT_OUT_DIR = Path(SCRIPT_DIR) / Path("out")
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description="Process network function performance data.")
+parser.add_argument("--data-dir", type=str, default=DEFAULT_DAT_DIR, help="Path to the data directory.")
+parser.add_argument("--out-dir", type=str, default=DEFAULT_OUT_DIR, help="Path to the directory where output plots will be saved.")
+args = parser.parse_args()
+
+data_dir = args.data_dir
+output_dir = args.out_dir
 
 # Ensure the output directory exists
 os.makedirs(output_dir, exist_ok=True)
