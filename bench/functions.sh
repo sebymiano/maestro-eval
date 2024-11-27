@@ -34,6 +34,8 @@ CURRENT_LOG=$BASE_LOG
 ADDITIONAL_REPLAY_PCAP_FLAGS=""
 EXPIRATION_TIME_US=""
 
+USE_OLD_DPDK=false
+
 set_log() {
 	local exp_dir=$1
 	CURRENT_LOG="$exp_dir/$BASE_LOG"
@@ -171,9 +173,17 @@ run_nf() {
 	local pcap="${3:-}"
 
 	if [[ ! -z "$pcap" ]]; then
-		dut_run_background "sudo ./$nf_exe --lcores $lcores -a $DUT_TX_DEV -a $DUT_RX_DEV -- $DUT_PCAPS_DIR/$pcap" "$DUT_SYNTHESIZED_DIR"
+		if [[ "$USE_OLD_DPDK" = true ]]; then
+			dut_run_background "sudo ./$nf_exe --lcores $lcores -w $DUT_TX_DEV -w $DUT_RX_DEV -- $DUT_PCAPS_DIR/$pcap" "$DUT_SYNTHESIZED_DIR"
+		else
+			dut_run_background "sudo ./$nf_exe --lcores $lcores -a $DUT_TX_DEV -a $DUT_RX_DEV -- $DUT_PCAPS_DIR/$pcap" "$DUT_SYNTHESIZED_DIR"
+		fi
 	else
-		dut_run_background "sudo ./$nf_exe --lcores $lcores -a $DUT_TX_DEV -a $DUT_RX_DEV" "$DUT_SYNTHESIZED_DIR"
+		if [[ "$USE_OLD_DPDK" = true ]]; then
+			dut_run_background "sudo ./$nf_exe --lcores $lcores -w $DUT_TX_DEV -w $DUT_RX_DEV" "$DUT_SYNTHESIZED_DIR"
+		else
+			dut_run_background "sudo ./$nf_exe --lcores $lcores -a $DUT_TX_DEV -a $DUT_RX_DEV" "$DUT_SYNTHESIZED_DIR"
+		fi
 	fi
 }
 

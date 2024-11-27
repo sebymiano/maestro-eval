@@ -9,6 +9,8 @@ source $FUNCTIONS_FILE
 
 PCAP="zipf.pcap"
 
+export USE_OLD_DPDK=true
+
 shared_nothing() {
     bench_balanced_nf "nop-sn" "nop" "sn" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "nop-sn-zipf"
     bench_balanced_nf "cl-sn" "cl" "sn" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-sn-zipf"
