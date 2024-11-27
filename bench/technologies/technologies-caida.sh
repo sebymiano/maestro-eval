@@ -61,11 +61,11 @@ seq() {
     bench_nf "cl-seq" "cl" "seq" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-seq-caida-64"
 }
 
-sh -c ${MLNX_SYNTHESIZED_NFS}
-sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
-
-export TG_PCAPS_DIR=${TG_SCR_PCAPS_DIR}
-export DUT_PCAPS_DIR=${DUT_SCR_PCAPS_DIR}
+if [ $# -eq 1 ] && [ $1 == "--mlnx" ]; then
+    echo "Using Mellanox synthesized NFs"
+    sh -c ${MLNX_SYNTHESIZED_NFS}
+    sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
+fi
 
 shared_nothing
 rss

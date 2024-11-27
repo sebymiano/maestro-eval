@@ -116,6 +116,9 @@ state_compute_replication() {
 	bench_balanced_nf_scr "pol-scr" "pol" "dpdk_pol_scr_" "$CURRENT_EXPERIMENT_DIR" "pol-scr-uniform-64" $scr_gen
 }
 
+# check if there is a argument passed and if the value is --no-scr
+# if no-scr is passed, the traffic generator cannot detect SCR packets because they have
+# a custom-defined header, and the RSS will not work.
 if [ $# -eq 1 ] && [ $1 == "--no-scr" ]; then
 	state_compute_replication false
 else

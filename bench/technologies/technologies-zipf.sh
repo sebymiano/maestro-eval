@@ -51,8 +51,11 @@ tm() {
     bench_balanced_nf "cl-tm" "cl" "tm" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-tm-zipf-64"
 }
 
-sh -c ${MLNX_SYNTHESIZED_NFS}
-sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
+if [ $# -eq 1 ] && [ $1 == "--mlnx" ]; then
+    echo "Using Mellanox synthesized NFs"
+    sh -c ${MLNX_SYNTHESIZED_NFS}
+    sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
+fi
 
 shared_nothing
 rss

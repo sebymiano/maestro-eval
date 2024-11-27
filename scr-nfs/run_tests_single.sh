@@ -117,6 +117,8 @@ state_compute_replication() {
 }
 
 # check if there is a argument passed and if the value is --no-scr
+# if no-scr is passed, the traffic generator cannot detect SCR packets because they have
+# a custom-defined header, and the RSS will not work.
 if [ $# -eq 1 ] && [ $1 == "--no-scr" ]; then
 	state_compute_replication false
 else

@@ -61,8 +61,11 @@ seq() {
     bench_nf "cl-seq" "cl" "seq" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-seq-single-64"
 }
 
-sh -c ${MLNX_SYNTHESIZED_NFS}
-sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
+if [ $# -eq 1 ] && [ $1 == "--mlnx" ]; then
+    echo "Using Mellanox synthesized NFs"
+    sh -c ${MLNX_SYNTHESIZED_NFS}
+    sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
+fi
 
 export ADDITIONAL_REPLAY_PCAP_FLAGS="--start-rate 25"
 shared_nothing
