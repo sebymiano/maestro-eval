@@ -41,6 +41,7 @@ tm() {
     bench_balanced_nf "cl-tm" "cl" "tm" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-tm"
 }
 
+# export ADDITIONAL_REPLAY_PCAP_FLAGS="-v"
 shared_nothing
 locks
 tm

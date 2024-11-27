@@ -292,6 +292,7 @@ def run_pktgen(pcap, rate, cfg, duration_sec, lb=False, dry_run=False, verbose=F
 		# cfg['tx']['port'], cfg['rx']['port'] = cfg['rx']['port'], cfg['tx']['port']
 
 	proc = __run(dry_run, pktgen_cmd)
+	print("[*] DPDK replay finished with code", proc.returncode)
 	assert proc.returncode == 0
 
 	results_snd_port_file = PKTGEN_RESULTS_SND_PORT.replace('.csv', '.json')
