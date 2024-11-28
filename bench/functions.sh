@@ -322,6 +322,26 @@ __run_balanced_bench_with_n_cores_latency() {
 	kill_nf "$nf_exe"
 }
 
+textifyDuration() {
+   local duration=$1
+   local exp_name=$2
+   local shiff=$duration
+   local secs=$((shiff % 60));  shiff=$((shiff / 60));
+   local mins=$((shiff % 60));  shiff=$((shiff / 60));
+   local hours=$shiff
+   local splur; if [ $secs  -eq 1 ]; then splur=''; else splur='s'; fi
+   local mplur; if [ $mins  -eq 1 ]; then mplur=''; else mplur='s'; fi
+   local hplur; if [ $hours -eq 1 ]; then hplur=''; else hplur='s'; fi
+   if [[ $hours -gt 0 ]]; then
+      txt="$hours hour$hplur, $mins minute$mplur, $secs second$splur"
+   elif [[ $mins -gt 0 ]]; then
+      txt="$mins minute$mplur, $secs second$splur"
+   else
+      txt="$secs second$splur"
+   fi
+   echo "[$exp_name] $txt"
+}
+
 __run_balanced_bench_with_n_cores() {
 	local nf_exe=$1
 	local pcap=$2
@@ -334,6 +354,9 @@ __run_balanced_bench_with_n_cores() {
 
 	for ((i=1;i<=$ITERATIONS;i++)); do
 		echo "[$exp_name] Running NF with $n_cores cores ($lcores)"
+		# Get start time
+		start_time=$SECONDS
+
 		run_nf "$nf_exe" "$lcores" "$pcap"
 
 		wait_for_nf "$nf_exe"
@@ -351,6 +374,11 @@ __run_balanced_bench_with_n_cores() {
 		echo -e "$i,$n_cores,$gbps,$mpps,$loss" >> $tmp_results_file
 
 		rm -f $intermediate_results_file
+
+		# Get end time
+		end_time=$SECONDS
+		duration=$((end_time - start_time))
+		textifyDuration $duration $exp_name
 
 		echo "[$exp_name]   * Killing NF"
 		kill_nf "$nf_exe"
