@@ -17,6 +17,7 @@ DPDK_DIR="$BUILD_DIR/dpdk"
 DPDK_KMODS_DIR="$BUILD_DIR/dpdk-kmods"
 PKTGEN_DIR="$BUILD_DIR/Pktgen-DPDK"
 DPDK_BURST_REPLAY_DIR="$BUILD_DIR/dpdk-burst-replay"
+DPDK_BURST_REPLAY_BRANCH="feat/http_server"
 
 PYTHON_REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 
@@ -218,6 +219,7 @@ install_dpdk_burst_replay() {
 	pushd $BUILD_DIR
 		git clone \
 			--depth 1 \
+			--branch $DPDK_BURST_REPLAY_BRANCH \
 			https://github.com/sebymiano/dpdk-burst-replay \
 			$DPDK_BURST_REPLAY_DIR
 		
