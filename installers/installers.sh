@@ -232,7 +232,7 @@ install_dpdk_burst_replay() {
 			PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig
 
 			# Install deps
-			sudo apt install libnuma-dev libyaml-dev libcyaml-dev libcsv-dev -y
+			sudo apt install libnuma-dev libyaml-dev libcyaml-dev libcsv-dev libmicrohttpd-dev -y
 
 			mkdir -p build
 			cd build
