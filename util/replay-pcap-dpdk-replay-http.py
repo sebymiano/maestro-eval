@@ -429,6 +429,20 @@ def run_pktgen(pcap, rate, cfg, duration_sec, lb=False, dry_run=False, verbose=F
 
     return data
 
+def read_json_with_retries(file_path, retries=5, delay=1):
+    """Read a JSON file with retries if the file does not exist."""
+    for attempt in range(retries):
+        try:
+            with open(file_path, 'r') as file:
+                return json.load(file)
+        except FileNotFoundError:
+            if attempt < retries - 1:
+                print(f"[*] File {file_path} not found. Retrying in {delay} second(s)...")
+                time.sleep(delay)
+            else:
+                print(f"[*][!] File {file_path} not found after {retries} retries.")
+                exit(1)
+
 def run_pktgen_http(rate, duration_sec):
     print(f"[*] Replaying at {rate}% linerate")
     # The rate is in 0-100%, I want to convert it to Gbps
@@ -468,12 +482,9 @@ def run_pktgen_http(rate, duration_sec):
     results_snd_port_file = PKTGEN_RESULTS_SND_PORT.replace('.csv', '.json')
     results_rcv_port_file = PKTGEN_RESULTS_RCV_PORT.replace('.csv', '.json')
 
-    # Load JSON data
-    with open(results_snd_port_file, 'r') as file:
-        snd_port_data = json.load(file)
-
-    with open(results_rcv_port_file, 'r') as file:
-        rcv_port_data = json.load(file)
+    # Load JSON data with retries
+    snd_port_data = read_json_with_retries(results_snd_port_file)
+    rcv_port_data = read_json_with_retries(results_rcv_port_file)
 
     total_rx_packets = 0
     total_rx_bytes = 0
@@ -751,6 +762,8 @@ def main():
             data = run_pktgen(pcap, cfg, args.rate, args.duration, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues)
 
         save_throughput_data(data)
+    
+    kill_pktgen(None, None)
 
 if __name__ == '__main__':
     main()
