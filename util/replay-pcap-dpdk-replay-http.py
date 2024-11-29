@@ -23,7 +23,7 @@ RESULTS_FILENAME         = "results.csv"
 
 MIN_RATE             = 0   # Gbps
 MAX_RATE             = 100 # Gbps
-LOSS_THRESHOLD       = 0.1 # %
+LOSS_THRESHOLD       = 0.4 # %
 CHECKING_ERROR       = 0.1 # relative error
 
 DEFAULT_TX_CORES            = 2

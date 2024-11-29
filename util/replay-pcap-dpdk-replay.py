@@ -66,6 +66,8 @@ stats:
   - pci_id: {{recvport}}
     file_name: "{{results_rcv_port}}"
 send_port_pci: {{sendport}}
+enable_rest_server: False
+rest_server_port: 5000
 loglevel: TRACE
 """
 
@@ -102,12 +104,14 @@ stats:
   - pci_id: {{recvport}}
     file_name: "{{results_rcv_port}}"
 send_port_pci: {{sendport}}
+enable_rest_server: False
+rest_server_port: 5000
 loglevel: TRACE
 """
 
 def kill_pktgen(sig, frame):
 	print("[*] Killing DPDK burst replay instances", flush=True)
-	os.system("sudo killall dpdk-replay")
+	os.system("sudo killall -9 dpdk-replay")
 	sys.exit(0)
 
 def build_script_throughput(pcap, rate, cfg, duration_sec, warmup_duration_sec=DEFAULT_WARMUP_DURATION_SEC, scr=False, num_rx_queues=8):
