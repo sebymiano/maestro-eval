@@ -233,7 +233,7 @@ replay_pcap() {
 	cmd="$cmd --tx-cores $TG_TX_CORES"
 	cmd="$cmd --rx-cores $TG_RX_CORES"
 	cmd="$cmd --duration $ITERATION_DURATION_SEC"
-	# cmd="$cmd --find-stable-throughput"
+	cmd="$cmd --find-stable-throughput"
 	cmd="$cmd $ADDITIONAL_REPLAY_PCAP_FLAGS"
 
 	tg_run "$cmd" "$TG_EVAL_BENCH_DIR" >> $CURRENT_LOG
