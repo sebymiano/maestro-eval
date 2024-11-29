@@ -43,14 +43,6 @@ DPDK_BURST_REPLAY_CONFIG_TEMPLATE = \
 traces: 
   - path: "{{pcap}}"
     tx_queues: 8
-  - path: "{{pcap}}"
-    tx_queues: 8
-  - path: "{{pcap}}"
-    tx_queues: 8
-  - path: "{{pcap}}"
-    tx_queues: 8
-  - path: "{{pcap}}"
-    tx_queues: 8
 numacore: {{numacore}}
 nbruns: -1
 timeout: {{duration}}
@@ -70,7 +62,7 @@ stats:
   - pci_id: {{recvport}}
     file_name: "{{results_rcv_port}}"
 send_port_pci: {{sendport}}
-enable_rest_server: True
+enable_rest_server: {{http_server_on}}
 rest_server_port: 5000
 loglevel: TRACE
 """
@@ -79,14 +71,6 @@ DPDK_BURST_REPLAY_CONFIG_TEMPLATE_SCR = \
 """
 ---
 traces: 
-  - path: "{{pcap}}"
-    tx_queues: 8
-  - path: "{{pcap}}"
-    tx_queues: 8
-  - path: "{{pcap}}"
-    tx_queues: 8
-  - path: "{{pcap}}"
-    tx_queues: 8
   - path: "{{pcap}}"
     tx_queues: 8
 numacore: {{numacore}}
@@ -108,7 +92,7 @@ stats:
   - pci_id: {{recvport}}
     file_name: "{{results_rcv_port}}"
 send_port_pci: {{sendport}}
-enable_rest_server: True
+enable_rest_server: {{http_server_on}}
 rest_server_port: 5000
 loglevel: TRACE
 """
@@ -365,11 +349,8 @@ def run_pktgen(pcap, cfg, rate, duration_sec, lb=False, dry_run=False, verbose=F
     results_rcv_port_file = PKTGEN_RESULTS_RCV_PORT.replace('.csv', '.json')
 
     # Load JSON data
-    with open(results_snd_port_file, 'r') as file:
-        snd_port_data = json.load(file)
-
-    with open(results_rcv_port_file, 'r') as file:
-        rcv_port_data = json.load(file)
+    snd_port_data = read_json_with_retries(results_snd_port_file)
+    rcv_port_data = read_json_with_retries(results_rcv_port_file)
 
     total_rx_packets = 0
     total_rx_bytes = 0
@@ -379,10 +360,6 @@ def run_pktgen(pcap, cfg, rate, duration_sec, lb=False, dry_run=False, verbose=F
     total_tx_rate = 0.0
     num_entries_snd_data = len(snd_port_data)
     num_entries_rcv_data = len(rcv_port_data)
-
-    # assert num_entries_snd_data == num_entries_rcv_data
-    # assert num_entries_snd_data == duration_sec + DEFAULT_WARMUP_DURATION_SEC
-    # assert num_entries_rcv_data == duration_sec + DEFAULT_WARMUP_DURATION_SEC
 
     os.remove(PKTGEN_RESULTS_SND_PORT)
     os.remove(PKTGEN_RESULTS_RCV_PORT)
