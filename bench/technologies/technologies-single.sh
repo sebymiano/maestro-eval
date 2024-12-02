@@ -15,6 +15,7 @@ RUN_LOCKS=false
 RUN_TM=false
 RUN_MLNX=false
 RUN_RSS=false
+RUN_SN=false
 
 shared_nothing() {
     bench_balanced_nf "nop-sn" "nop" "sn" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "nop-sn-single-64"
@@ -87,6 +88,19 @@ for arg in "$@"; do
         RUN_MLNX=true
         exit 0
     fi
+    if [ "$arg" == "--sn" ]; then
+        echo "Using Shared Nothing"
+        RUN_SN=true
+        exit 0
+    fi
+    if [ "$arg" == "--all" ]; then
+        echo "Run all test"
+        RUN_LOCKS=true
+        RUN_TM=true
+        RUN_RSS=true
+        RUN_SN=true
+        exit 0
+    fi
 done
 
 if [ $RUN_MLNX ]; then
@@ -96,7 +110,9 @@ if [ $RUN_MLNX ]; then
 fi
 
 export ADDITIONAL_REPLAY_PCAP_FLAGS="--start-rate 25"
-shared_nothing
+if [ $RUN_SN ]; then
+    shared_nothing
+fi
 
 if [ $RUN_RSS ]; then
     rss
