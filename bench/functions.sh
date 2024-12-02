@@ -234,6 +234,7 @@ replay_pcap() {
 	cmd="$cmd --rx-cores $TG_RX_CORES"
 	cmd="$cmd --duration $ITERATION_DURATION_SEC"
 	cmd="$cmd --find-stable-throughput"
+	# cmd="$cmd --find-stable-throughput-fast"
 	cmd="$cmd $ADDITIONAL_REPLAY_PCAP_FLAGS"
 
 	tg_run "$cmd" "$TG_EVAL_BENCH_DIR" >> $CURRENT_LOG
@@ -402,6 +403,9 @@ __run_bench_with_n_cores() {
 
 	for ((i=1;i<=$ITERATIONS;i++)); do
 		echo "[$exp_name] Running NF with $n_cores cores ($lcores)"
+		# Get start time
+		start_time=$SECONDS
+
 		run_nf "$nf_exe" "$lcores"
 
 		wait_for_nf "$nf_exe"
@@ -411,14 +415,22 @@ __run_bench_with_n_cores() {
 
 		replay_pcap "$pcap" "$intermediate_results_file"
 
-		local mpps=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $1}')
-		local gbps=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $2}')
+		local tx_mpps=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $1}')
+		local tx_gbps=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $2}')
+		local rx_mpps=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $3}')
+		local rx_gbps=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $4}')
 		local loss=$(cat $intermediate_results_file | tail -n 1 | awk -F ',' '{print $5}')
 
-		echo "[$exp_name]         results: $gbps Gbps $mpps Mpps $loss% loss"
-		echo -e "$i,$n_cores,$gbps,$mpps,$loss" >> $tmp_results_file
+		echo "[$exp_name]         results-RX: RX-Gbps $(printf "%.4f" $rx_gbps) RX-Mpps $(printf "%.4f" $rx_mpps) loss $(printf "%.4f" $loss)%"
+		echo "[$exp_name]         results-TX: TX-Gbps $(printf "%.4f" $tx_gbps) TX-Mpps $(printf "%.4f" $tx_mpps)"
+		echo -e "$i,$n_cores,$rx_gbps,$rx_mpps,$loss" >> $tmp_results_file
 
 		rm -f $intermediate_results_file
+
+		# Get end time
+		end_time=$SECONDS
+		duration=$((end_time - start_time))
+		textifyDuration $duration $exp_name
 
 		echo "[$exp_name]   * Killing NF"
 		kill_nf "$nf_exe"

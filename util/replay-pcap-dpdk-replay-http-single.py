@@ -551,6 +551,89 @@ def get_cfg(tx_pcie_dev, rx_pcie_dev, num_tx_cores, num_rx_cores):
 
     return cfg
 
+def search_throughput_fast(pcap, cfg, duration_sec, iterations, lb=False, dry_run=False, verbose=False, scr=False, num_rx_queues=8, start_rate=100.0):
+    upper_bound = 100.0  # %
+    lower_bound = 0      # %
+
+    mid_rate = float(start_rate)
+
+    best_data = {
+        'tx': {
+            'rate':     0,
+            'pkt_rate': 0,
+        },
+        'rx': {
+            'rate':     0,
+            'pkt_rate': 0,
+        },
+        'loss': 0,
+    }
+
+    last_tx_rate = -1
+    last_requested_tx_rate = -1
+    i = 0
+    repeated_run = False
+    best_rx_rate = -1
+    lower_factor = 0.9  # Default starting factor
+    upper_factor = 1.1  # Default starting factor
+
+    start_pktgen(pcap, mid_rate, cfg, duration_sec, lb=lb, dry_run=dry_run, verbose=verbose, scr=scr, num_rx_queues=num_rx_queues)
+
+    while True:
+        rate = mid_rate
+
+        if rate < 0.1 or i >= iterations:
+            break
+
+        data = run_pktgen_http(rate, duration_sec)
+        observed_rx_rate = data["rx"]["rate"]
+
+        # Very few packets sent, something went wrong
+        if data["tx"]["rate"] < 0.1:
+            print(f'[*][!] Too few packets sent, repeating run')
+            continue
+
+        # Dynamically adjust factors based on loss and RX behavior
+        loss = data['loss']
+        if loss < LOSS_THRESHOLD:
+            # Expand search upwards if loss is low
+            upper_factor = min(upper_factor * 1.05, 2.0)  # Cap at 200%
+            lower_factor = max(lower_factor * 0.95, 0.5)  # Floor at 50%
+        else:
+            # Narrow search if loss is high
+            upper_factor = max(upper_factor * 0.95, 1.0)  # Floor at 100%
+            lower_factor = min(lower_factor * 1.05, 1.0)  # Cap at 100%
+
+        # Update bounds based on adjusted factors
+        lower_bound = max(0.1, observed_rx_rate * lower_factor)
+        upper_bound = min(100.0, observed_rx_rate * upper_factor)
+        mid_rate = (lower_bound + upper_bound) / 2
+
+        print(f"[*] Updated search range: lower={lower_bound:.2f}%, upper={upper_bound:.2f}%, mid={mid_rate:.2f}%")
+
+        # Update best result if loss is below threshold
+        if loss < LOSS_THRESHOLD and data["rx"]["rate"] > best_rx_rate:
+            best_data = data
+            best_rx_rate = data["rx"]["rate"]
+
+        # Terminate if converged or out of iterations
+        if mid_rate == upper_bound or i + 1 >= iterations:
+            break
+
+        i += 1
+        last_tx_rate = data["tx"]["rate"]
+        last_requested_tx_rate = rate
+
+    print()
+    print("[*] Best results:")
+    print(f'[*]   TX:   {best_data["tx"]["pkt_rate"]:3.2f} Mpps {best_data["tx"]["rate"]:3.2f} Gbps')
+    print(f'[*]   RX:   {best_data["rx"]["pkt_rate"]:3.2f} Mpps {best_data["rx"]["rate"]:3.2f} Gbps')
+    print(f'[*]   loss: {best_data["loss"]:.2f} %')
+
+    stop_pktgen()
+
+    return best_data
+
 def search_throughput(pcap, cfg, duration_sec, iterations, lb=False, dry_run=False, verbose=False, scr=False, num_rx_queues=8, start_rate=100.0):
     upper_bound = 100.0 # %
     lower_bound = 0     # %
@@ -695,6 +778,9 @@ def main():
     parser.add_argument('--find-stable-throughput',
         action='store_true', required=False, help='Time duration (seconds)')
 
+    parser.add_argument('--find-stable-throughput-fast',
+        action='store_true', required=False, help='Time duration (seconds)')
+
     parser.add_argument('--dry-run',
         default=False, required=False, action='store_true',
         help='Dry run (does not run pktgen, just prints out the configuration)')
@@ -736,6 +822,8 @@ def main():
     else:
         if args.find_stable_throughput:
             data = search_throughput(pcap, cfg, args.duration, args.iterations, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues, start_rate=args.start_rate)
+        elif args.find_stable_throughput_fast:
+            data = search_throughput_fast(pcap, cfg, args.duration, 5, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues, start_rate=args.start_rate)
         else:
             data = run_pktgen(pcap, cfg, args.rate, args.duration, lb=args.lb, dry_run=args.dry_run, verbose=args.v, scr=args.scr, num_rx_queues=args.num_rx_queues)
 
