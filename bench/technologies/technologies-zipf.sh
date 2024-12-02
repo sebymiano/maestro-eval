@@ -10,6 +10,10 @@ MLNX_SYNTHESIZED_NFS_OTHERS="$CURRENT_EXPERIMENT_DIR/../../synthesized-mlnx/comp
 source $FUNCTIONS_FILE
 
 PCAP="zipf.pcap"
+RUN_LOCKS=false
+RUN_TM=false
+RUN_MLNX=false
+RUN_RSS=false
 
 shared_nothing() {
     bench_balanced_nf "nop-sn" "nop" "sn" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "nop-sn-zipf-64"
@@ -51,13 +55,45 @@ tm() {
     bench_balanced_nf "cl-tm" "cl" "tm" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-tm-zipf-64"
 }
 
-if [ $# -eq 1 ] && [ $1 == "--mlnx" ]; then
+for arg in "$@"; do
+    if [ "$arg" == "--locks" ]; then
+        echo "--locks parameter is present"
+        RUN_LOCKS=true
+        exit 0
+    fi
+    if [ "$arg" == "--tm" ]; then
+        echo "--tm parameter is present"
+        RUN_TM=true
+        exit 0
+    fi
+    if [ "$arg" == "--rss" ]; then
+        echo "--rss parameter is present"
+        RUN_RSS=true
+        exit 0
+    fi
+    if [ "$arg" == "--mlnx" ]; then
+        echo "Using Mellanox synthesized NFs"
+        RUN_MLNX=true
+        exit 0
+    fi
+done
+
+if [ $RUN_MLNX ]; then
     echo "Using Mellanox synthesized NFs"
     sh -c ${MLNX_SYNTHESIZED_NFS}
     sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
 fi
 
 shared_nothing
-rss
-locks
-tm
+
+if [ $RUN_RSS ]; then
+    rss
+fi
+
+if [ $RUN_LOCKS ]; then
+    locks
+fi
+
+if [ $RUN_TM ]; then
+    tm
+fi
