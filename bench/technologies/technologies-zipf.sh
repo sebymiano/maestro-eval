@@ -60,27 +60,23 @@ for arg in "$@"; do
     if [ "$arg" == "--locks" ]; then
         echo "--locks parameter is present"
         RUN_LOCKS=true
-        exit 0
     fi
     if [ "$arg" == "--tm" ]; then
         echo "--tm parameter is present"
         RUN_TM=true
-        exit 0
     fi
     if [ "$arg" == "--rss" ]; then
         echo "--rss parameter is present"
         RUN_RSS=true
-        exit 0
     fi
     if [ "$arg" == "--mlnx" ]; then
         echo "Using Mellanox synthesized NFs"
         RUN_MLNX=true
-        exit 0
+
     fi
     if [ "$arg" == "--sn" ]; then
         echo "Using Shared Nothing"
         RUN_SN=true
-        exit 0
     fi
     if [ "$arg" == "--all" ]; then
         echo "Run all test"
@@ -88,7 +84,6 @@ for arg in "$@"; do
         RUN_TM=true
         RUN_RSS=true
         RUN_SN=true
-        exit 0
     fi
 done
 
