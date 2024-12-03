@@ -97,25 +97,25 @@ for arg in "$@"; do
     fi
 done
 
-if [ $RUN_MLNX ]; then
+if [ "$RUN_MLNX" == true ]; then
     echo "Using Mellanox synthesized NFs"
     sh -c ${MLNX_SYNTHESIZED_NFS}
     sh -c ${MLNX_SYNTHESIZED_NFS_OTHERS}
 fi
 
-if [ $RUN_SN ]; then
+if [ "$RUN_SN" == true ]; then
     shared_nothing
 fi
 
-if [ $RUN_RSS ]; then
+if [ "$RUN_RSS" == true ]; then
     rss
 fi
 
-if [ $RUN_LOCKS ]; then
+if [ "$RUN_LOCKS" == true ]; then
     locks
 fi
 
-if [ $RUN_TM ]; then
+if [ "$RUN_TM" == true ]; then
     tm
 fi
 
