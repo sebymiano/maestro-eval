@@ -68,21 +68,20 @@ seq() {
 
 for arg in "$@"; do
     if [ "$arg" == "--locks" ]; then
-        echo "--locks parameter is present"
+        echo "Using Locks NFs"
         RUN_LOCKS=true
     fi
     if [ "$arg" == "--tm" ]; then
-        echo "--tm parameter is present"
+        echo "Using TM NFs"
         RUN_TM=true
     fi
     if [ "$arg" == "--rss" ]; then
-        echo "--rss parameter is present"
+        echo "Using RSS NFs"
         RUN_RSS=true
     fi
     if [ "$arg" == "--mlnx" ]; then
         echo "Using Mellanox synthesized NFs"
         RUN_MLNX=true
-
     fi
     if [ "$arg" == "--sn" ]; then
         echo "Using Shared Nothing"
