@@ -66,6 +66,8 @@ seq() {
     bench_nf "cl-seq" "cl" "seq" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-seq-imc-scr-64"
 }
 
+export USE_OLD_DPDK=false
+
 for arg in "$@"; do
     if [ "$arg" == "--locks" ]; then
         echo "Using Locks NFs"
@@ -94,6 +96,10 @@ for arg in "$@"; do
         RUN_TM=true
         RUN_RSS=true
         RUN_SN=true
+    fi
+
+    if [ "$arg" == "--old" ]; then
+        export USE_OLD_DPDK=true
     fi
 done
 

@@ -56,6 +56,8 @@ tm() {
     bench_balanced_nf "cl-tm" "cl" "tm" "$PCAP" "$CURRENT_EXPERIMENT_DIR" "cl-tm-zipf-64"
 }
 
+export USE_OLD_DPDK=false
+
 for arg in "$@"; do
     if [ "$arg" == "--locks" ]; then
         echo "Using Locks NFs"
@@ -84,6 +86,9 @@ for arg in "$@"; do
         RUN_TM=true
         RUN_RSS=true
         RUN_SN=true
+    fi
+    if [ "$arg" == "--old" ]; then
+        export USE_OLD_DPDK=true
     fi
 done
 
