@@ -23,7 +23,7 @@ DUT_DPDK_MAKEFILE=$DUT_MAESTRO_DIR/util/Makefile.dpdk
 DUT_VPP_RUN_SCRIPT=$DUT_VPP_DIR/maestro-eval-utils/scripts/container-run.sh
 DUT_VPP_STOP_SCRIPT=$DUT_VPP_DIR/maestro-eval-utils/scripts/container-stop.sh
 
-TG_REPLAY_PCAP_SCRIPT=$TG_EVAL_DIR/util/replay-pcap-dpdk-replay-http.py
+TG_REPLAY_PCAP_SCRIPT=$TG_EVAL_DIR/util/replay-pcap-dpdk-replay.py
 TG_ACTIVATE_PYTHON_ENV_SCRIPT=$TG_EVAL_DIR/build/env/bin/activate
 
 BASE_LOG=experiment.log
