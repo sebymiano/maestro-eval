@@ -327,8 +327,8 @@ def run_pktgen(pcap, rate, cfg, duration_sec, lb=False, dry_run=False, verbose=F
         total_rx_bytes += int(entry['RX-bytes'])
         total_rx_rate += float(entry['RX-rate'])
     
-    average_rx_packets = total_rx_packets / (num_entries_rcv_data-DEFAULT_WARMUP_DURATION_SEC)
-    average_rx_rate = total_rx_rate / (num_entries_rcv_data-DEFAULT_WARMUP_DURATION_SEC)
+    average_rx_packets = total_rx_packets / (num_entries_snd_data-DEFAULT_WARMUP_DURATION_SEC)
+    average_rx_rate = total_rx_rate / (num_entries_snd_data-DEFAULT_WARMUP_DURATION_SEC)
 
     if average_tx_packets == 0:
         print(f'[*][!] No packets sent')
